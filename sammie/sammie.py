@@ -784,12 +784,25 @@ def _handle_matting_bgcolor_view(frame_number, view_options, points, return_nump
         return _convert_to_qpixmap(image) if not return_numpy else image
 
     bgcolor = view_options.get("bgcolor", (0, 255, 0))
+    image = _pan_decontaminate(image, mask)
     image = _composite_bgcolor(image, mask, bgcolor)
 
     if return_numpy:
         return image
     else:
         return _convert_to_qpixmap(image)
+
+
+def _pan_decontaminate(image, mask):
+    """PAN: 반투명 외곽에서 원래 배경색을 빼낸다 (설정에서 끌 수 있음)."""
+    if not get_settings_manager().get_session_setting("matte_decontam", True):
+        return image
+    try:
+        from sammie.decontaminate import decontaminate
+        return decontaminate(image, mask)
+    except Exception as e:
+        print(f"외곽 색 번짐 제거 실패(원본 색 사용): {e}")
+        return image
 
 
 def _handle_matting_alpha_view(frame_number, view_options, points, return_numpy=False, object_id_filter=None):
@@ -802,6 +815,7 @@ def _handle_matting_alpha_view(frame_number, view_options, points, return_numpy=
     if mask is None:
         return _convert_to_qpixmap(image) if not return_numpy else image
 
+    image = _pan_decontaminate(image, mask)
     image_rgba = _composite_alpha(image, mask)
 
     if return_numpy:

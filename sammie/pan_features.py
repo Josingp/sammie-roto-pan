@@ -10,7 +10,7 @@ import shutil
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication, QGroupBox, QGridLayout, QHBoxLayout, QLabel, QProgressDialog,
-    QPushButton, QSlider, QVBoxLayout,
+    QCheckBox, QPushButton, QSlider, QVBoxLayout,
 )
 
 from sammie import core
@@ -65,6 +65,15 @@ class StabilizeGroup(QGroupBox):
         row.addWidget(self.restore_btn, 1)
         layout.addLayout(row)
 
+        self.compare_btn = QPushButton("누르고 있으면 안정화 전 보기")
+        self.compare_btn.setToolTip("버튼을 누르고 있는 동안 안정화 전 원본을 보여줍니다. 떼면 안정화 결과로 돌아옵니다.\n재생하면서 비교하려면 '원본 복원' 후 다시 안정화하세요.")
+        layout.addWidget(self.compare_btn)
+
+        self.result_label = QLabel("")
+        self.result_label.setWordWrap(True)
+        self.result_label.setToolTip("외곽 떨림 지수: 움직임을 보정한 뒤에도 프레임 사이에 남는 외곽 차이입니다. 낮을수록 안정적입니다.")
+        layout.addWidget(self.result_label)
+
     def _make_slider(self, grid, row, text, lo, hi, val, key, tip):
         lbl = QLabel(text)
         lbl.setToolTip(tip)
@@ -87,6 +96,47 @@ class StabilizeGroup(QGroupBox):
         sm = get_settings_manager()
         self.strength_slider.setValue(int(sm.get_session_setting(strength_key, 70)))
         self.radius_slider.setValue(int(sm.get_session_setting(radius_key, 2)))
+
+
+def make_decontam_checkbox():
+    cb = QCheckBox("외곽 색 번짐 제거 (배경색 빼기)")
+    cb.setToolTip(
+        "머리카락 같은 반투명 외곽에 섞여 있는 원래 배경색을 빼냅니다.\n"
+        "다른 배경에 합성했을 때 외곽에 예전 배경색 테두리가 남지 않습니다.\n"
+        "Alpha·BGcolor 보기와 내보내기에 적용되고, 흑백 매트는 바뀌지 않습니다.")
+    cb.setChecked(bool(get_settings_manager().get_session_setting("matte_decontam", True)))
+    cb.stateChanged.connect(
+        lambda _: get_settings_manager().set_session_setting("matte_decontam", cb.isChecked()))
+    return cb
+
+
+_compare_saved = {}
+
+
+def compare_press(main_window, kind):
+    """누르는 동안 안정화 전 원본(백업)을 화면에 보여준다."""
+    target, backup, _, _, _, _, _ = KINDS[kind]
+    if not os.path.exists(backup):
+        print("비교할 원본이 없습니다 (아직 안정화하지 않았습니다).")
+        return
+    attr = "mask_dir" if kind == "mask" else "matting_dir"
+    _compare_saved[kind] = getattr(core, attr)
+    setattr(core, attr, backup)
+    main_window._update_current_frame_display()
+
+
+def compare_release(main_window, kind):
+    if kind in _compare_saved:
+        setattr(core, "mask_dir" if kind == "mask" else "matting_dir", _compare_saved.pop(kind))
+        main_window._update_current_frame_display()
+
+
+def _group_for(main_window, kind):
+    try:
+        tab = main_window.sidebar.segmentation_tab if kind == "mask" else main_window.sidebar.matting_tab
+        return tab.stab_group
+    except Exception:
+        return None
 
 
 def make_one_click_button():
@@ -159,10 +209,11 @@ def run_stabilize(main_window, kind, quiet=False):
         QApplication.processEvents()
 
     print(f"외곽 안정화 시작 ({'마스크' if kind == 'mask' else '매트'}, 강도 {int(strength*100)}, 참조 ±{radius}프레임)")
+    stats = {}
     result = ts.stabilize_folder(
         backup, target, core.load_base_frame, start, end,
         strength=strength, radius=radius, band_px=band_px, soft=soft,
-        progress_fn=on_progress, cancel_fn=progress.wasCanceled)
+        progress_fn=on_progress, cancel_fn=progress.wasCanceled, stats=stats)
     progress.close()
 
     if result < 0:
@@ -173,6 +224,13 @@ def run_stabilize(main_window, kind, quiet=False):
         return False
 
     print(f"외곽 안정화 완료: {result}프레임")
+    before, after = stats.get("before", 0.0), stats.get("after", 0.0)
+    if before > 0:
+        msg = f"외곽 떨림 지수 {before:.1f} → {after:.1f} ({(after / before - 1) * 100:+.0f}%)"
+        print(msg)
+        grp = _group_for(main_window, kind)
+        if grp is not None:
+            grp.result_label.setText(msg)
     sm.save_session_settings()
     main_window._update_current_frame_display()
     return True
@@ -187,6 +245,9 @@ def restore_stabilize(main_window, kind):
     get_settings_manager().set_session_setting(flag, False)
     if os.path.exists(backup):
         shutil.rmtree(backup, ignore_errors=True)
+    grp = _group_for(main_window, kind)
+    if grp is not None:
+        grp.result_label.setText("")
     main_window._update_current_frame_display()
 
 
@@ -266,4 +327,7 @@ def run_one_click(main_window):
             main_window.view_combo.setCurrentIndex(idx)
     except Exception:
         pass
+    # 내보내기 창이 매팅 결과로 열리도록 (세그멘테이션 매트가 기본값이면 바꿔 둠)
+    if not str(sm.app_settings.export_output_type).startswith("Matting"):
+        sm.set_app_setting("export_output_type", "Matting-Matte")
     main_window.export_video()

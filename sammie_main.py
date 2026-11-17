@@ -40,7 +40,7 @@ from sammie.gui_widgets import (
 
 # ==================== VERSION ====================
 
-__version__ = "2.5.0-PAN.1"
+__version__ = "2.5.0-PAN.2"
 
 # ==================== LOGGING HELPER ====================
 
@@ -522,6 +522,8 @@ class MattingTab(QWidget):
         # PAN: 외곽 안정화 (매트)
         self.stab_group = pan_features.StabilizeGroup("matte")
         layout.addWidget(self.stab_group)
+        self.decontam_checkbox = pan_features.make_decontam_checkbox()
+        layout.addWidget(self.decontam_checkbox)
 
         # Parameters
         self._create_parameter_sliders(layout)
@@ -1128,6 +1130,7 @@ class Sidebar(QWidget):
         self.segmentation_tab.load_values_from_settings()
         self.matting_tab.load_values_from_settings()
         self.matting_tab.stab_group.load_values_from_settings()
+        self.matting_tab.decontam_checkbox.setChecked(bool(get_settings_manager().get_session_setting("matte_decontam", True)))
         self.removal_tab.load_values_from_settings()
 
 
@@ -1286,6 +1289,8 @@ class MainWindow(QMainWindow):
             seg_tab.one_click_btn.clicked.connect(lambda: pan_features.run_one_click(self))
             seg_tab.stab_group.run_btn.clicked.connect(lambda: pan_features.run_stabilize(self, "mask"))
             seg_tab.stab_group.restore_btn.clicked.connect(lambda: pan_features.restore_stabilize(self, "mask"))
+            seg_tab.stab_group.compare_btn.pressed.connect(lambda: pan_features.compare_press(self, "mask"))
+            seg_tab.stab_group.compare_btn.released.connect(lambda: pan_features.compare_release(self, "mask"))
 
             # Connect postprocessing tab sliders
 
@@ -1309,6 +1314,9 @@ class MainWindow(QMainWindow):
             # PAN
             matting_tab.stab_group.run_btn.clicked.connect(lambda: pan_features.run_stabilize(self, "matte"))
             matting_tab.stab_group.restore_btn.clicked.connect(lambda: pan_features.restore_stabilize(self, "matte"))
+            matting_tab.stab_group.compare_btn.pressed.connect(lambda: pan_features.compare_press(self, "matte"))
+            matting_tab.stab_group.compare_btn.released.connect(lambda: pan_features.compare_release(self, "matte"))
+            matting_tab.decontam_checkbox.stateChanged.connect(lambda _: self._update_current_frame_display())
 
             # Connect postprocessing tab sliders
             matting_tab.shrink_grow_slider.valueChanged.connect(lambda _: self._update_current_frame_display())

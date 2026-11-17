@@ -148,6 +148,7 @@ class SessionSettings:
     matte_stab_radius: int = 2
     mask_stab_active: bool = False
     matte_stab_active: bool = False
+    matte_decontam: bool = True
     
     # Session metadata
     created_timestamp: str = ""

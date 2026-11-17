@@ -40,7 +40,8 @@ def _flow_scale(h, w, max_side=960):
 
 
 class FlowCache:
-    """프레임 쌍 (t -> n) 플로우를 계산·캐시. 같은 프레임을 여러 오브젝트가 공유한다."""
+    """프레임 쌍 (t -> n) 플로우를 계산·캐시. 같은 프레임을 여러 오브젝트가 공유한다.
+    플로우는 축소 해상도로 보관하고(4K에서도 메모리 절약) 쓸 때만 원본 크기로 키운다."""
 
     def __init__(self, load_frame_fn, h, w, max_side=960):
         self.load_frame_fn = load_frame_fn
@@ -49,7 +50,7 @@ class FlowCache:
         self.dis = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM)
         self._gray = {}
         self._color = {}
-        self._flow = {}
+        self._flow = {}   # 축소 해상도, 축소 픽셀 단위
 
     def gray(self, t):
         if t not in self._gray:
@@ -64,24 +65,29 @@ class FlowCache:
         self.gray(t)
         return self._color.get(t)
 
-    def flow(self, t, n):
-        """t 프레임의 각 픽셀이 n 프레임에서 어디에 있는지 (풀해상도 픽셀 단위)."""
+    def _small_flow(self, t, n):
         key = (t, n)
         if key not in self._flow:
             g0, g1 = self.gray(t), self.gray(n)
             if g0 is None or g1 is None:
                 return None
-            f = self.dis.calc(g0, g1, None)
-            if self.scale != 1.0:
-                f = cv2.resize(f, (self.w, self.h), interpolation=cv2.INTER_LINEAR) / self.scale
-            self._flow[key] = f.astype(np.float32)
+            self._flow[key] = self.dis.calc(g0, g1, None).astype(np.float32)
         return self._flow[key]
+
+    def flow(self, t, n):
+        """t 프레임의 각 픽셀이 n 프레임에서 어디에 있는지 (풀해상도 픽셀 단위)."""
+        f = self._small_flow(t, n)
+        if f is None:
+            return None
+        if self.scale != 1.0:
+            f = cv2.resize(f, (self.w, self.h), interpolation=cv2.INTER_LINEAR) / self.scale
+        return f
 
     def evict_before(self, t):
         for d in (self._gray, self._color):
             for k in [k for k in d if k < t]:
                 del d[k]
-        for k in [k for k in self._flow if k[0] < t]:
+        for k in [k for k in self._flow if k[0] < t or k[1] < t]:
             del self._flow[k]
 
 
@@ -112,7 +118,12 @@ def stabilize_frame(t, alphas, flows, frames_color, strength=0.7, radius=2,
     """
     a_t = alphas[t]
     H, W = a_t.shape
-    band_full = edge_band(a_t, band_px, soft=soft) * float(np.clip(strength, 0.0, 1.0))
+    strength = float(np.clip(strength, 0.0, 1.0))
+    if strength <= 0.0:
+        return a_t.copy()
+    # 소프트 매트: 강도 = 섞는 비율 / 이진 마스크: 강도 = 이웃 프레임 투표 가중치
+    band_full = edge_band(a_t, band_px, soft=soft) * (strength if soft else 1.0)
+    gain = 1.0 if soft else min(10.0, strength / max(1e-3, 1.0 - strength))
     ys, xs = np.nonzero(band_full > 0)
     if len(ys) == 0:
         return a_t.copy()
@@ -134,7 +145,7 @@ def stabilize_frame(t, alphas, flows, frames_color, strength=0.7, radius=2,
         if n == t or n not in alphas or flow is None:
             continue
         d = abs(n - t)
-        w_time = float(np.exp(-0.5 * (d / sigma_t) ** 2))
+        w_time = float(np.exp(-0.5 * (d / sigma_t) ** 2)) * gain
         f = flow[y0:y1, x0:x1]
         mx = grid_x + f[..., 0]
         my = grid_y + f[..., 1]
@@ -157,7 +168,7 @@ def stabilize_frame(t, alphas, flows, frames_color, strength=0.7, radius=2,
     out = a_t.copy()
     if not soft:
         # 이진 마스크: 시간축 다수결로 경계 고정 후 다시 이진화
-        res = np.where(out_c >= 127.5, 255, 0).astype(np.uint8)
+        res = np.where(smoothed >= 127.5, 255, 0).astype(np.uint8)
         keep = band <= 0.0
         res[keep] = a_c[keep]
     else:
@@ -200,9 +211,28 @@ def restore_backup(target_dir, backup_dir):
     return True
 
 
+def jitter_residual(prev_alpha, cur_alpha, flow_cur_to_prev, conf=None, band_px=6):
+    """이전 프레임 알파를 현재 프레임으로 정렬했을 때 외곽 밴드에서 남는 차이(0..255 평균).
+    움직임을 보정한 뒤에도 남는 차이 = 떨림. (합, 가중치) 반환."""
+    band = edge_band(cur_alpha, band_px, soft=True)
+    ys, xs = np.nonzero(band > 0)
+    if len(ys) == 0:
+        return 0.0, 0.0
+    y0, y1, x0, x1 = int(ys.min()), int(ys.max()) + 1, int(xs.min()), int(xs.max()) + 1
+    gx, gy = np.meshgrid(np.arange(x0, x1, dtype=np.float32), np.arange(y0, y1, dtype=np.float32))
+    f = flow_cur_to_prev[y0:y1, x0:x1]
+    warped = cv2.remap(prev_alpha, gx + f[..., 0], gy + f[..., 1], cv2.INTER_LINEAR,
+                       borderMode=cv2.BORDER_REPLICATE).astype(np.float32)
+    wgt = band[y0:y1, x0:x1]
+    if conf is not None:
+        wgt = wgt * conf[y0:y1, x0:x1]
+    diff = np.abs(warped - cur_alpha[y0:y1, x0:x1].astype(np.float32))
+    return float((diff * wgt).sum()), float(wgt.sum())
+
+
 def stabilize_folder(source_dir, target_dir, load_frame_fn, start_frame, end_frame,
                      strength=0.7, radius=2, band_px=6, soft=False,
-                     progress_fn=None, cancel_fn=None):
+                     progress_fn=None, cancel_fn=None, stats=None):
     """
     source_dir(원본 백업)의 알파를 안정화해 target_dir에 쓴다.
     progress_fn(done, total) / cancel_fn() -> bool
@@ -238,6 +268,8 @@ def stabilize_folder(source_dir, target_dir, load_frame_fn, start_frame, end_fra
 
     cache = FlowCache(load_frame_fn, h, w)
     total = len(frames)
+    prev_src, prev_out = {}, {}            # 떨림 지수 계산용 (오브젝트별 직전 프레임)
+    j_src = j_out = j_w_src = j_w_out = 0.0
     for i, t in enumerate(frames):
         if cancel_fn and cancel_fn():
             return -1
@@ -277,7 +309,22 @@ def stabilize_folder(source_dir, target_dir, load_frame_fn, start_frame, end_fra
                 res = a_t
             cv2.imwrite(os.path.join(out_dir, f"{oid}.png"), res)
 
+            # 떨림 지수: 직전 프레임과의 (움직임 보정 후) 외곽 차이 — 전/후 비교
+            if stats is not None and (t - 1) in flows and flows[t - 1] is not None and oid in prev_src:
+                a, b = jitter_residual(prev_src[oid], a_t, flows[t - 1], None, band_px)
+                j_src += a; j_w_src += b
+                a, b = jitter_residual(prev_out[oid], res, flows[t - 1], None, band_px)
+                j_out += a; j_w_out += b
+            if stats is not None:
+                if a_t.any():
+                    prev_src[oid], prev_out[oid] = a_t, res
+                else:
+                    prev_src.pop(oid, None); prev_out.pop(oid, None)
+
         cache.evict_before(t - radius)
         if progress_fn:
             progress_fn(i + 1, total)
+    if stats is not None:
+        stats["before"] = j_src / j_w_src if j_w_src > 0 else 0.0
+        stats["after"] = j_out / j_w_out if j_w_out > 0 else 0.0
     return total
