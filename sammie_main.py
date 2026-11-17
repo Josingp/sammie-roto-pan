@@ -40,7 +40,7 @@ from sammie.gui_widgets import (
 
 # ==================== VERSION ====================
 
-__version__ = "2.5.0-PAN.2"
+__version__ = "2.5.0-PAN.3"
 
 # ==================== LOGGING HELPER ====================
 
@@ -524,6 +524,9 @@ class MattingTab(QWidget):
         layout.addWidget(self.stab_group)
         self.decontam_checkbox = pan_features.make_decontam_checkbox()
         layout.addWidget(self.decontam_checkbox)
+        self.auto_spec_btn = QPushButton("이 PC 사양에 맞게 자동 설정")
+        self.auto_spec_btn.setToolTip("그래픽카드 메모리를 확인해서 매팅 모델·내부 해상도·배치 크기를 맞춥니다.\n원클릭 누끼는 이 설정을 자동으로 적용합니다.")
+        layout.addWidget(self.auto_spec_btn)
 
         # Parameters
         self._create_parameter_sliders(layout)
@@ -1317,6 +1320,7 @@ class MainWindow(QMainWindow):
             matting_tab.stab_group.compare_btn.pressed.connect(lambda: pan_features.compare_press(self, "matte"))
             matting_tab.stab_group.compare_btn.released.connect(lambda: pan_features.compare_release(self, "matte"))
             matting_tab.decontam_checkbox.stateChanged.connect(lambda _: self._update_current_frame_display())
+            matting_tab.auto_spec_btn.clicked.connect(lambda: pan_features.apply_auto_profile(self))
 
             # Connect postprocessing tab sliders
             matting_tab.shrink_grow_slider.valueChanged.connect(lambda _: self._update_current_frame_display())
@@ -2415,7 +2419,11 @@ class MainWindow(QMainWindow):
                 progress.close()
                 self.matany_manager.run_matting(self.point_manager.points, parent_window=self, combined=combined)
             except Exception as e:
-                if "out of memory" in str(e):
+                if "out of memory" in str(e).lower() and getattr(self, "_pan_auto_retry", False):
+                    # PAN: 자동 설정 모드에서는 창을 띄우지 않고 낮은 설정으로 다시 시도
+                    self._pan_oom = True
+                    print("GPU 메모리 부족 — 설정을 낮춰 다시 시도합니다.")
+                elif "out of memory" in str(e).lower():
                     show_message_dialog(self, title="Error", message="An out of memory error occurred. Please try again with lower settings." , type="warning")
                 else: 
                     print(f"An error occurred: {e}")

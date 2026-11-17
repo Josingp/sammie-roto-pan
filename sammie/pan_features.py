@@ -145,7 +145,7 @@ def make_one_click_button():
         "점을 찍은 뒤 이 버튼 하나로 끝까지 진행합니다.\n"
         "1) 전체 트래킹  2) 마스크 외곽 안정화  3) 매팅(머리카락 등 반투명 외곽)\n"
         "4) 매트 외곽 안정화  5) 내보내기 창 열기\n"
-        "매팅 모델은 GPU 메모리 12GB 이상이면 VideoMaMa, 아니면 MatAnyone2를 자동 선택합니다.")
+        "매팅 모델과 해상도는 이 PC의 그래픽카드 메모리에 맞춰 자동으로 정하고,\n메모리가 모자라면 설정을 낮춰 다시 시도합니다.")
     btn.setMinimumHeight(46)
     btn.setStyleSheet("QPushButton { font-weight: bold; }")
     return btn
@@ -262,8 +262,92 @@ def _vram_gb():
     return 0.0
 
 
-def _pick_matting_model():
-    return "VideoMaMa" if _vram_gb() >= 11.5 else "MatAnyone2"
+def _gpu_name():
+    try:
+        import torch
+        dev = core.DeviceManager.get_device()
+        if dev.type == "cuda":
+            return torch.cuda.get_device_name(dev)
+        return dev.type.upper()
+    except Exception:
+        return "알 수 없음"
+
+
+def auto_profile():
+    """그래픽카드 메모리에 맞는 매팅 설정. (모델, 내부 해상도, 배치당 프레임)
+    기준값은 보수적으로 잡았고, 그래도 메모리가 모자라면 원클릭이 한 단계씩 낮춰 다시 시도한다."""
+    v = _vram_gb()
+    if v >= 20:
+        return "VideoMaMa", 1080, 16
+    if v >= 11.5:
+        return "VideoMaMa", 720, 16
+    if v >= 6:
+        return "MatAnyone2", 1080, 16
+    return "MatAnyone2", 720, 16
+
+
+def _set_matting(main_window, model, res, chunk=None):
+    sm = get_settings_manager()
+    sm.set_session_setting("matany_model", model)
+    sm.set_session_setting("matany_res", res)
+    if chunk:
+        sm.set_session_setting("matany_chunk", chunk)
+    mt = main_window.sidebar.matting_tab
+    if mt is not None:
+        mt.matany_model_combo.setCurrentText(model)
+        mt.matany_res_combo.setCurrentText(str(res))
+        if chunk:
+            mt.chunk_combo.setCurrentText(str(chunk))
+
+
+def apply_auto_profile(main_window):
+    model, res, chunk = auto_profile()
+    _set_matting(main_window, model, res, chunk)
+    v = _vram_gb()
+    spec = f"{_gpu_name()}" + (f" (VRAM {v:.0f}GB)" if v > 0 else "")
+    print(f"[자동 설정] {spec} → 매팅 모델 {model}, 내부 해상도 {res}")
+    return model, res
+
+
+_RES_STEPS = [1080, 720, 576, 480]
+
+
+def _lower_setting(model, res):
+    """메모리 부족 시 다음에 시도할 설정. 더 낮출 수 없으면 None."""
+    lower = [r for r in _RES_STEPS if r < res]
+    if model == "VideoMaMa":
+        if res > 720 and lower:
+            return "VideoMaMa", lower[0]
+        return "MatAnyone2", 720          # VideoMaMa가 720에서도 안 되면 가벼운 모델로
+    if lower:
+        return model, lower[0]
+    return None
+
+
+def run_matting_auto(main_window):
+    """사양에 맞춘 설정으로 매팅. 메모리가 모자라면 한 단계씩 낮춰 최대 4번 시도. 성공하면 True."""
+    start, end, _ = core.get_frame_range()
+    model, res = apply_auto_profile(main_window)
+    main_window._pan_auto_retry = True
+    try:
+        for _ in range(4):
+            main_window._pan_oom = False
+            main_window.run_matting()
+            if not main_window._pan_oom:
+                return _has_output(core.matting_dir, start, end)
+            nxt = _lower_setting(model, res)
+            if nxt is None:
+                break
+            model, res = nxt
+            print(f"[자동 설정] 다시 시도: 매팅 모델 {model}, 내부 해상도 {res}")
+            _set_matting(main_window, model, res)
+        from sammie.gui_widgets import show_message_dialog
+        show_message_dialog(main_window, title="원클릭 누끼",
+                            message="GPU 메모리가 부족해서 매팅을 끝내지 못했습니다.\nIn/Out 마커로 구간을 나눠서 다시 시도해 보세요.",
+                            type="warning")
+        return False
+    finally:
+        main_window._pan_auto_retry = False
 
 
 def run_one_click(main_window):
@@ -294,20 +378,11 @@ def run_one_click(main_window):
         return
 
     # 3) 매팅
-    model = _pick_matting_model()
-    print(f"[원클릭 3/5] 매팅 ({model})")
+    print("[원클릭 3/5] 매팅")
     sm = get_settings_manager()
-    sm.set_session_setting("matany_model", model)
-    mt = main_window.sidebar.matting_tab
-    if mt is not None:
-        mt.matany_model_combo.setCurrentText(model)
-    # 머리카락 디테일: GPU 여유가 있으면 내부 해상도를 1080 이상으로
-    res = sm.get_session_setting("matany_res", 1080)
-    if _vram_gb() >= 8 and isinstance(res, int) and 0 < res < 1080:
-        sm.set_session_setting("matany_res", 1080)
-        if mt is not None:
-            mt.matany_res_combo.setCurrentText("1080")
-    main_window.run_matting()
+    if not run_matting_auto(main_window):
+        print("원클릭 중단: 매팅이 끝나지 않았습니다.")
+        return
     if not _has_output(core.matting_dir, start, end):
         print("원클릭 중단: 매팅이 끝나지 않았습니다.")
         return
