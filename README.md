@@ -48,6 +48,8 @@
 
 새 기능이나 수정은 다시 설치하지 않고 **패치 파일**(`Sammie-Roto-PAN-patch-버전.zip`)로 받습니다. 받아 둔 모델과 설정, 작업 중인 프로젝트는 그대로 유지됩니다.
 
+**최신 패치 받기**: [Sammie-Roto-PAN-patch-2.5.0-PAN.7.zip](https://github.com/Josingp/sammie-roto-pan/raw/main/patches/Sammie-Roto-PAN-patch-2.5.0-PAN.7.zip) (이 저장소의 [`patches`](patches) 폴더에 있습니다)
+
 1. Sammie-Roto PAN을 **종료**합니다.
 2. 패치 zip을 아무 곳에나 압축 풉니다. (바탕화면도 괜찮습니다)
 3. 풀린 폴더 안의 `apply_patch.bat`을 더블클릭합니다.
