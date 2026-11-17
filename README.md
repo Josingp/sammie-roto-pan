@@ -1,75 +1,296 @@
-# Sammie-Roto 2
-**S**egment **A**nything **M**odel with **M**atting **I**ntegrated **E**legantly
+# Sammie-Roto PAN
 
-![Sammie-Roto 2 screenshot](https://github.com/user-attachments/assets/bc2c99c8-4039-49f1-94ed-65f104a83e8d)
+영상에서 사람이나 사물을 AI로 따내는(로토스코핑·누끼) 윈도우용 데스크톱 툴입니다.
+대상 위에 점 몇 개만 찍으면 전체 프레임의 마스크를 만들고, 머리카락 같은 반투명 외곽까지 매트로 뽑아 줍니다.
 
-[![GitHub Downloads](https://img.shields.io/github/downloads/Zarxrax/Sammie-Roto-2/total)](https://github.com/Zarxrax/Sammie-Roto-2/releases)
-[![GitHub Code License](https://img.shields.io/github/license/Zarxrax/Sammie-Roto-2)](LICENSE)
-[![Discord](https://img.shields.io/discord/1437589475369811970?label=Discord&color=blue)](https://discord.gg/jb5qrFyGFF)
+오픈소스 [Sammie-Roto 2](https://github.com/Zarxrax/Sammie-Roto-2) v2.5.0(GPL-3.0)을 바탕으로, 실무에서 걸리던 **외곽 떨림**과 **머리카락 외곽 품질**을 손보고 한국어로 쓸 수 있게 만든 전용 빌드입니다.
 
-**Please add a Github Star if you find it useful!**
+## 원본과 달라진 점
 
-Sammie-Roto 2 is an easy-to-use, cross-platform desktop application for AI assisted masking of video clips. It has 3 primary functions:
-- Video Segmentation using [SAM2](https://github.com/facebookresearch/sam2)
-- Video Matting using [MatAnyone](https://github.com/pq-yang/MatAnyone), [MatAnyone 2](https://github.com/pq-yang/MatAnyone2), and [VideoMaMa](https://github.com/cvlab-kaist/VideoMaMa)
-- Video Object Removal using [MiniMax-Remover](https://github.com/zibojia/MiniMax-Remover) and [ProPainterX](https://github.com/Zarxrax/ProPainterX)
+| 기능 | 설명 |
+|---|---|
+| 원클릭 누끼 | 점만 찍고 버튼 하나로 트래킹 → 마스크 안정화 → 매팅 → 매트 안정화 → 내보내기 창까지 진행 |
+| 외곽 안정화 | 프레임마다 외곽이 떨리는 현상을 줄임. 마스크용·매트용 각각 제공 |
+| 전후 비교·떨림 지수 | 안정화 전후를 버튼으로 바로 비교하고, 떨림이 얼마나 줄었는지 숫자로 표시 |
+| 외곽 색 번짐 제거 | 반투명 외곽에 섞인 원래 배경색을 빼서, 다른 배경에 합성해도 테두리가 남지 않게 함 |
+| 한국어 화면 | 메뉴·버튼·툴팁·안내문을 한국어로 표시 |
+| 원클릭 설치 | `install.bat` 하나로 GPU 감지부터 모델 다운로드까지 질문 없이 진행 |
 
-Sammie-Roto 2 is free and open source, but runs models produced by several external projects and organizations. Some models may have restrictions on commercial usage. Please check with the relevant model provider if you have questions regarding licensing.
+---
 
-### Documentation and Tutorials:
-## [Wiki Documentation and usage guide](https://github.com/Zarxrax/Sammie-Roto-2/wiki)
+## 1. 설치
 
-[![Quick Start Video](https://img.youtube.com/vi/m0iZpxsZJcE/0.jpg)](https://www.youtube.com/watch?v=m0iZpxsZJcE)
+### 필요 사양
 
-*This video does not cover new features and changes added since version 2.0
+- Windows 10/11 (64비트)
+- NVIDIA 그래픽카드 권장: VRAM 8GB 이상. 최고 품질 매팅 모델(VideoMaMa)은 12GB 이상
+- 디스크 여유 공간 30GB 이상
+- 설치할 때 인터넷 연결 (모델 약 10GB 다운로드)
 
-## Need more help? [Join the Discord](https://discord.gg/jb5qrFyGFF)!
+그래픽카드가 없어도 CPU로 돌아가지만 매우 느리고 VideoMaMa는 쓸 수 없습니다.
 
-### Installation
-#### Windows:
-- Download latest version from [releases](https://github.com/Zarxrax/Sammie-Roto-2/releases)
-- Extract the zip archive to any location that doesn't restrict write permissions (don't put it in Program Files)
-- Run 'install.bat' and follow the prompt.
-- Run 'run_sammie.bat' to launch the software (or double click the desktop shortcut).
+### 설치 순서
 
-#### Mac
-- Download latest version from [releases](https://github.com/Zarxrax/Sammie-Roto-2/releases)
-- Unzip Sammie-Roto-2 into a folder in your home directory, e.g. ~/Sammie-Roto-2 (avoid Desktop, Documents and Downloads).
-- Open a terminal and navigate to the Sammie-Roto folder that you just extracted from the zip.
-- Execute the following command in the terminal: `bash install.sh` then follow the prompt.
-- When it finishes, launch from the Sammie-Roto-2 icon on your Desktop, from Spotlight, or with `bash run_sammie.sh`.
+1. 이 저장소 오른쪽 위 `Code → Download ZIP`으로 받거나, 전달받은 `Sammie-Roto-PAN-x.x.x.zip`을 준비합니다.
+2. `C:\Tools\Sammie-Roto-PAN`처럼 **일반 폴더**에 압축을 풉니다.
+   - `Program Files`, 바탕화면(OneDrive 동기화 폴더), 한글·공백이 많은 깊은 경로는 피하세요.
+   - 압축 파일 안에서 바로 실행하면 안 됩니다. 반드시 먼저 풀어야 합니다.
+3. `install.bat`을 더블클릭합니다. 검은 창이 뜨고 아래 순서로 자동 진행됩니다.
+   - 그래픽카드 감지 → 파이썬·패키지 설치 → 바탕화면 바로가기 생성 → 모델 전체 다운로드
+   - 처음에는 20~40분 걸립니다. 창을 닫지 말고 "설치 완료!"가 나올 때까지 기다리세요.
+4. 바탕화면의 **Sammie-Roto PAN** 아이콘으로 실행합니다. 아이콘이 없으면 폴더 안의 `run_sammie.bat`을 실행하세요.
 
-#### Linux
-- Download latest version from [releases](https://github.com/Zarxrax/Sammie-Roto-2/releases)
-- Extract the zip archive.
-- Open a terminal and navigate to the Sammie-Roto folder that you just extracted from the zip.
-- Execute the following command in the terminal: `bash install.sh` then follow the prompt.
-- To launch the program, execute `bash run_sammie.sh` in the terminal or find the shortcut in the applications menu.
+### 재설치·모델 다시 받기·삭제
 
-### Uninstall
-If you want to remove the application, simply delete the Sammie-Roto folder. Shortcuts on your desktop or elsewhere can also be deleted.
+- 이미 설치된 상태에서 `install.bat`을 다시 실행하면 메뉴가 나옵니다.
+  - `1) 재설치/복구`: 프로그램이 안 켜질 때
+  - `2) 모델 다시 받기`: 다운로드가 중간에 끊겼을 때. 이미 받은 파일은 건너뜁니다.
+- 삭제는 폴더를 통째로 지우고 바탕화면 아이콘을 지우면 끝입니다. 다른 곳에 남는 파일은 없습니다.
+- 폴더를 다른 위치로 옮겼다면 `install.bat`을 한 번 다시 실행하세요.
 
-### Updates
-**Full Changelog can be seen under [releases](https://github.com/Zarxrax/Sammie-Roto-2/releases)**
-- [10/04/2026] 2.5.0 - Adds an anime segmentation model, ProPainterX object removal, and several improvements and fixes.
-- [09/05/2026] 2.4.1 - Premilinary support for AMD GPUs on Windows, some bugfixes.
-- [08/22/2026] 2.4.0 - New installer/updater, additional segmentation tracking options, many small fixes and improvements.
-- [04/17/2026] 2.3.3 - Several large performance optimizations, and colorspace conversions are now handled correctly.
-- [04/10/2026] 2.3.2 - Improved temporal stability for VideoMaMa.
-- [04/02/2026] 2.3.1 - Added a live preview during segmentation while holding the shift key.
-- [03/27/2026] 2.3.0 - Added VideoMaMa model, added option to combine objects when matting, fixed major segmentation bug, and more.
-- [03/08/2026] 2.2.0 - Added MatAnyone2 model.
-- [01/18/2026] 2.1.1 - Rebuilt the export dialog, slightly faster application startup, bug fixes.
-- [12/16/2025] 2.1.0 - Added In/Out markers. Modifying points no longer deletes tracking data. Enabled half-precision for much faster segmentation. Added EfficientTAM model.
-- [11/23/2025] 2.0.0 - First stable release. Includes several new features and bugfixes. New quick-start video tutorial and [Discord server](https://discord.gg/jb5qrFyGFF).
-- [10/31/2025] Release of Sammie-Roto 2 Beta.
+---
 
-### Acknowledgements
-* [SAM 2](https://github.com/facebookresearch/sam2)
-* [EfficientTAM](https://github.com/yformer/EfficientTAM)
-* [MatAnyone](https://github.com/pq-yang/MatAnyone) & [MatAnyone2](https://github.com/pq-yang/MatAnyone2)
-* [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) (for optimized MatAnyone code)
-* [VideoMaMa](https://github.com/cvlab-kaist/VideoMaMa)
-* [MiniMax-Remover](https://github.com/zibojia/MiniMax-Remover)
-* [ProPainter](https://github.com/sczhou/ProPainter)
-* Some icons by [Yusuke Kamiyamane](http://p.yusukekamiyamane.com/)
+## 2. 화면 구성
+
+- **가운데**: 영상 화면. 여기에 점을 찍습니다. 마우스 휠로 확대·축소합니다.
+- **화면 아래**: 프레임 슬라이더, 재생 버튼, In/Out 마커 버튼, `보기` 선택.
+- **오른쪽**: 작업 탭 세 개.
+  - `세그멘테이션`: 점 찍기, 트래킹, 마스크 외곽 안정화
+  - `매팅`: 머리카락 등 반투명 외곽 매트 만들기, 매트 외곽 안정화, 색 번짐 제거
+  - `오브젝트 제거`: 따낸 대상을 영상에서 지우기
+- **맨 아래**: 찍은 포인트 목록과 콘솔(진행 상황·오류 메시지).
+
+`보기` 항목은 프로그램 내부 값이라 영어 그대로입니다.
+
+| 보기 | 내용 | 단축키 |
+|---|---|---|
+| Segmentation-Edit | 원본 위에 마스크를 색으로 겹쳐 보기 (점 찍을 때) | F2 |
+| Segmentation-Matte | 마스크를 흑백으로 보기 | F3 |
+| Segmentation-BGcolor | 마스크로 따낸 결과를 단색 배경 위에 보기 | F4 |
+| Matting-Matte | 매팅 결과를 흑백으로 보기 | F5 |
+| Matting-BGcolor | 매팅으로 따낸 결과를 단색 배경 위에 보기 | F6 |
+| ObjectRemoval | 오브젝트 제거 결과 보기 | F7 |
+
+---
+
+## 3. 가장 빠른 사용법: 원클릭 누끼
+
+1. **영상 열기**: `파일 → 영상 불러오기`(Ctrl+O) 또는 영상 파일을 화면에 끌어다 놓습니다.
+   - 지원 형식: mp4, mov, mkv, m4v, avi, webm, 이미지 시퀀스(png, jpg, tiff 등)
+2. **점 찍기**: 따낼 대상 위를 **좌클릭**합니다. 색이 입혀진 영역이 따질 영역입니다.
+   - 빠진 부분은 좌클릭으로 더 찍습니다.
+   - 잘못 들어간 부분은 **우클릭**(또는 Ctrl+좌클릭)으로 제외합니다.
+   - **Shift**를 누른 채 마우스를 움직이면 찍기 전에 결과를 미리 볼 수 있습니다.
+3. **원클릭 누끼** 버튼을 누릅니다. 다섯 단계가 자동으로 이어집니다.
+   1. 전체 트래킹: 마스크를 모든 프레임에 퍼뜨림
+   2. 마스크 외곽 안정화
+   3. 매팅: GPU 메모리가 12GB 이상이면 VideoMaMa, 아니면 MatAnyone2를 자동 선택
+   4. 매트 외곽 안정화
+   5. 내보내기 창 열기
+4. **내보내기** 창에서 형식과 출력 종류를 고르고 `내보내기`를 누릅니다. (6장 참고)
+
+중간에 진행 창의 `취소`를 누르면 그 단계에서 멈춥니다. 이미 끝난 단계의 결과는 남아 있습니다.
+
+---
+
+## 4. 단계별로 직접 하기
+
+결과가 마음에 안 들거나 세밀하게 조절하고 싶을 때 씁니다.
+
+### 4-1. 점 잘 찍는 요령
+
+- 점은 적을수록 좋습니다. 보통 포함 1~3개, 제외 0~2개면 충분합니다.
+- 대상이 가장 잘 보이는 프레임에서 찍으세요. 꼭 첫 프레임일 필요는 없습니다.
+- 트래킹 후 마스크가 틀어지는 프레임이 있으면, 그 프레임으로 가서 점을 추가하고 다시 트래킹합니다. 점을 찍은 프레임은 **키프레임**이 되고, PgUp/PgDown으로 오갈 수 있습니다.
+- 여러 대상을 따로 따려면 `오브젝트` 번호를 바꿔서 찍습니다. 번호마다 색이 다르고 내보낼 때 따로 저장할 수 있습니다.
+- 영상 일부만 작업하려면 `[`(In)과 `]`(Out) 마커로 구간을 정합니다. 트래킹·매팅·내보내기가 그 구간에만 적용됩니다.
+
+### 4-2. 세그멘테이션 탭
+
+| 항목 | 설명 |
+|---|---|
+| 모델 선택 | Base(기본), Large(느리지만 조금 더 정확), Efficient(빠름), Anime(애니메이션용) |
+| 전체 트래킹 (Ctrl+T) | 찍은 점을 기준으로 전체 프레임에 마스크 생성 |
+| ◀ ▶ 버튼 | 현재 프레임에서 앞·뒤 방향으로만, 또는 한 프레임씩 트래킹 |
+| 트래킹 결과 지우기 | 마스크만 지우고 점은 남김 |
+| 비슷한 마스크 중복 제거 | 같은 그림이 반복되는 애니메이션 전용 |
+| 외곽 안정화 | 5장 참고 |
+| 후처리 슬라이더 | 구멍 메우기, 점 제거, 화면 가장자리 보정, 줄이기/늘리기. 원본을 바꾸지 않고 보기와 내보내기에만 적용 |
+
+세그멘테이션 마스크는 외곽이 딱 잘린 흑백입니다. 옷이나 소품처럼 외곽이 단단한 대상은 여기까지만 해도 됩니다. 머리카락·털·연기처럼 반투명한 외곽은 매팅까지 해야 합니다.
+
+### 4-3. 매팅 탭
+
+| 항목 | 설명 |
+|---|---|
+| 모델 | **VideoMaMa**: 품질 최고, 느림, VRAM 많이 씀. **MatAnyone2**: 빠르고 가벼움. MatAnyone: 이전 버전 |
+| 내부 해상도 | 이 크기로 줄여서 처리. 머리카락 디테일이 중요하면 1080 이상. 메모리 부족 오류가 나면 낮춤 |
+| 배치 겹침 프레임 / 배치당 프레임 | VideoMaMa 전용. 메모리 부족 오류가 나면 배치당 프레임을 낮춤 |
+| 모든 오브젝트 합치기 | 여러 오브젝트를 하나로 합쳐서 매팅 |
+| 매팅 실행 (Ctrl+M) | 매팅 시작 |
+| 외곽 안정화 | 5장 참고 |
+| 외곽 색 번짐 제거 | 5장 참고 |
+| 감마 | 1.0보다 낮추면 반투명 외곽이 얇아지고, 높이면 두꺼워짐 |
+| 줄이기/늘리기 | 매트 영역을 줄이거나 늘림 |
+
+- VideoMaMa는 **전체 트래킹이 끝난 상태**여야 합니다. MatAnyone 계열은 점만 찍혀 있어도 됩니다.
+- 결과는 `Matting-Matte`(F5) 보기에서 흑백으로, `Matting-BGcolor`(F6)에서 단색 배경 위로 확인합니다. 배경색은 `보기` 옆 색 상자를 눌러 바꿉니다.
+
+### 4-4. 오브젝트 제거 탭
+
+따낸 대상을 영상에서 지우고 빈자리를 채웁니다. 먼저 전체 트래킹이 되어 있어야 합니다.
+
+- **MiniMax-Remover**: 품질이 좋지만 몇 초 분량만 가능
+- **ProPainterX**: 긴 클립 가능, 품질은 낮음. 움직이는 대상에 적합
+
+---
+
+## 5. 외곽 품질 기능
+
+### 외곽 안정화 (떨림 제거)
+
+AI는 프레임마다 외곽을 따로 판단하기 때문에, 재생하면 외곽이 미세하게 떨려 보입니다. 이 기능은 앞뒤 프레임의 외곽을 움직임에 맞춰 정렬한 뒤 서로 맞춰서 떨림을 줄입니다. 외곽 부분만 처리하고 안쪽은 건드리지 않습니다.
+
+- **세그멘테이션 탭의 `마스크 외곽 안정화`**: 트래킹 후 사용
+- **매팅 탭의 `매트 외곽 안정화`**: 매팅 후 사용
+
+| 조절 | 기본값 | 설명 |
+|---|---|---|
+| 강도 | 마스크 70 / 매트 60 | 높을수록 떨림이 줄어듦. 빠른 동작에서 외곽이 늦게 따라오면 낮춤 |
+| 참조 프레임(앞뒤) | 2 | 앞뒤 몇 프레임을 참고할지. 떨림이 심하면 3~4 |
+
+- 실행이 끝나면 버튼 아래에 **외곽 떨림 지수 전 → 후 (%)** 가 나옵니다. 숫자가 낮을수록 안정적입니다. 강도를 바꿔 가며 이 숫자를 기준으로 맞추면 됩니다.
+- **`누르고 있으면 안정화 전 보기`**: 누르고 있는 동안 안정화 전 상태를 보여 줍니다. 같은 프레임에서 전후를 바로 비교할 수 있습니다.
+- **`원본 복원`**: 안정화 전으로 되돌립니다.
+- 강도를 바꿔 여러 번 돌려도 매번 원본에서 다시 계산하므로 결과가 겹쳐서 뭉개지지 않습니다.
+- 트래킹이나 매팅을 다시 하면 안정화도 다시 해야 합니다.
+
+### 외곽 색 번짐 제거
+
+머리카락처럼 반투명한 외곽 픽셀에는 촬영 당시 배경색이 섞여 있습니다. 그대로 다른 배경에 올리면 외곽에 예전 배경색 테두리가 보입니다. 이 기능은 그 배경색을 빼냅니다.
+
+- 매팅 탭의 체크박스로 켜고 끕니다. 기본은 켜짐입니다.
+- **Alpha(투명 포함)와 BGcolor(단색 배경) 출력에만** 적용됩니다. 흑백 매트(Matte)는 바뀌지 않습니다.
+- 합성 프로그램에서 직접 색 보정을 할 거라면 끄고 내보내세요.
+
+---
+
+## 6. 내보내기
+
+`파일 → 영상 내보내기`(Ctrl+E)
+
+### 출력 종류
+
+| 출력 종류 | 내용 | 쓰는 경우 |
+|---|---|---|
+| Segmentation-Matte / Matting-Matte | 흑백 매트 | 합성 프로그램에서 루마 매트로 사용 |
+| Segmentation-Alpha / Matting-Alpha | 원본 색 + 투명 채널 | 바로 다른 배경에 올릴 때 |
+| Segmentation-BGcolor / Matting-BGcolor | 단색 배경 위에 합성 | 크로마키로 넘길 때 |
+| ObjectRemoval | 대상을 지운 영상 | 클린 플레이트 |
+
+머리카락까지 살리려면 **Matting-** 으로 시작하는 종류를 고르세요. Segmentation- 은 외곽이 딱 잘린 마스크입니다.
+
+### 형식
+
+| 형식 | 특징 |
+|---|---|
+| ProRes Video | 편집·합성용 기본. 알파 포함 가능(4444) |
+| EXR Sequence | 합성용 이미지 시퀀스. Nuke 등에 적합 |
+| PNG Sequence | 투명 포함 이미지 시퀀스 |
+| FFV1 Video | 무손실 영상 |
+| H.264 / H.265 / VP9 Video | 용량이 작은 확인용 |
+
+### 그 밖의 옵션
+
+- **원본 영상과 같은 폴더에 저장**: 끄면 출력 폴더를 직접 고릅니다.
+- **파일 이름**: `{input_name}`, `{output_type}`, `{object_id}`, `{object_name}` 태그를 쓸 수 있습니다.
+- **오브젝트마다 파일 따로 내보내기**: 파일 이름에 `{object_id}`나 `{object_name}` 태그가 있어야 합니다.
+- **In/Out 마커 구간만 내보내기**
+- **설정 저장**: 지금 설정을 다음에도 기본값으로 씁니다.
+
+현재 프레임 한 장만 저장하려면 `파일 → 이미지 내보내기`(Ctrl+Shift+E)를 씁니다.
+
+---
+
+## 7. 저장과 이어서 하기
+
+- 프로그램을 껐다 켜면 마지막 작업 상태가 자동으로 이어집니다.
+- **프로젝트 저장**(Ctrl+Shift+S): 점·마스크·매팅 결과를 통째로 파일 하나로 저장합니다. 다른 PC로 옮기거나 나중에 다시 열 때 씁니다. **프로젝트 불러오기**는 Ctrl+Shift+L.
+- **포인트 저장**(Ctrl+S): 찍은 점만 저장합니다. 같은 영상에 **포인트 불러오기**(Ctrl+L)로 다시 얹을 수 있습니다.
+- 새 영상을 불러오면 이전 작업의 임시 결과는 지워집니다. 남겨야 하면 먼저 프로젝트로 저장하세요.
+
+---
+
+## 8. 단축키
+
+`도움말 → 단축키`(Ctrl+F1)에서도 볼 수 있습니다.
+
+| 분류 | 키 | 동작 |
+|---|---|---|
+| 파일 | Ctrl+O | 영상 불러오기 |
+| | Ctrl+E / Ctrl+Shift+E | 영상 / 이미지 내보내기 |
+| | Ctrl+S / Ctrl+L | 포인트 저장 / 불러오기 |
+| | Ctrl+Shift+S / Ctrl+Shift+L | 프로젝트 저장 / 불러오기 |
+| 이동 | Space | 재생·일시정지 |
+| | `,` / `.` | 이전 / 다음 프레임 |
+| | PgUp / PgDown | 이전 / 다음 키프레임 |
+| | Home / End | 첫 / 마지막 프레임 |
+| | `[` / `]` | In / Out 마커 설정 |
+| | Ctrl+Shift+X | 마커 지우기 |
+| 포인트 | Ctrl+Z | 마지막 포인트 삭제 |
+| | Delete | 목록에서 선택한 포인트 삭제 |
+| | Ctrl+Delete | 현재 프레임 포인트 지우기 |
+| | Shift+Delete | 현재 오브젝트 포인트 지우기 |
+| | Ctrl+Shift+Delete | 포인트 전체 지우기 |
+| 작업 | Ctrl+T | 전체 트래킹 |
+| | Ctrl+R | 트래킹 결과 지우기 |
+| | Ctrl+M | 매팅 실행 |
+| | Ctrl+D | 비슷한 마스크 중복 제거 |
+| 보기 | F2 ~ F7 | 보기 전환 (2장 표 참고) |
+| | `=` / `-` | 확대 / 축소 |
+| | Backspace / Ctrl+Backspace | 100% / 화면에 맞추기 |
+| | Ctrl+Shift+R | 화면 배치 초기화 |
+
+---
+
+## 9. 문제 해결
+
+| 증상 | 해결 |
+|---|---|
+| "GPU 메모리가 부족합니다" | 매팅 탭에서 내부 해상도를 한 단계 낮추거나, 배치당 프레임을 낮추거나, 모델을 MatAnyone2로 바꿉니다. 긴 영상은 In/Out 마커로 나눠서 처리합니다. |
+| 트래킹 중 대상을 놓침 | 놓친 프레임으로 가서 점을 추가하고 다시 트래킹합니다. 대상이 가려졌다 나오는 구간에는 다시 나온 프레임에 점을 찍습니다. |
+| 외곽 떨림이 남음 | 외곽 안정화 강도를 올리거나 참조 프레임을 3~4로 올립니다. |
+| 빠른 동작에서 외곽이 늦게 따라옴 | 외곽 안정화 강도를 낮추거나 참조 프레임을 1로 줄입니다. |
+| 머리카락이 뭉개짐 | 매팅을 안 하고 세그멘테이션 결과를 내보낸 경우가 많습니다. 출력 종류가 Matting- 인지 확인하고, 내부 해상도를 올립니다. |
+| 외곽에 이상한 색이 생김 | 외곽 색 번짐 제거를 끄고 비교해 봅니다. |
+| 매우 느림 | 콘솔 맨 위에 `Using device: cuda`가 나오는지 봅니다. `cpu`로 나오면 그래픽카드를 못 잡은 것이니 드라이버를 최신으로 올리고 `install.bat → 1) 재설치/복구`를 실행합니다. |
+| 프로그램이 안 켜짐 | 폴더 안의 `sammie_debug.log` 내용을 확인합니다. `install.bat → 1) 재설치/복구`를 실행합니다. |
+| "이미 실행 중" | 작업 관리자에서 남아 있는 python 프로세스를 종료합니다. |
+| 모델 다운로드 실패 | `install.bat → 2) 모델 다시 받기`를 실행합니다. 회사 방화벽이 huggingface.co, github.com을 막고 있지 않은지 확인합니다. |
+
+---
+
+## 10. 라이선스와 주의사항
+
+- 이 프로그램의 코드는 원본과 같은 **GPL-3.0**입니다. 회사 밖으로 프로그램을 배포할 때는 소스도 함께 공개해야 합니다. 사내에서만 쓰는 것은 제한이 없습니다.
+- 프로그램이 쓰는 AI 모델은 라이선스가 각각 다릅니다. **납품 등 상업 작업에 쓰기 전에 반드시 확인하세요.**
+
+| 모델 | 용도 | 라이선스 |
+|---|---|---|
+| SAM 2 | 세그멘테이션 | Apache-2.0 (상업 이용 가능) |
+| MatAnyone / MatAnyone2 | 매팅 | 비상업 무료, 상업 이용은 [허가 필요](https://github.com/pq-yang/MatAnyone?tab=License-1-ov-file) |
+| VideoMaMa | 매팅 | 비상업 무료, 상업 이용은 [제한적 허용](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid/blob/main/LICENSE.md) |
+| MiniMax-Remover | 오브젝트 제거 | CC-BY-NC-4.0 (비상업) |
+| ProPainter | 오브젝트 제거 | 비상업 무료, 상업 이용은 [허가 필요](https://github.com/sczhou/ProPainter?tab=License-1-ov-file) |
+
+- 원본 저장소로 자동 업데이트하면 전용 기능이 지워지므로 업데이트 확인을 꺼 두었습니다.
+- AI 결과는 완벽하지 않습니다. 최종 납품 전에는 전체를 재생해서 확인하세요.
+
+## 변경 내역
+
+- **2.5.0-PAN.2**: 마스크 외곽 안정화가 기본 강도에서 거의 적용되지 않던 문제 수정, 전후 비교 버튼·떨림 지수, 외곽 색 번짐 제거, 4K 메모리 사용량 감소, 원클릭 후 내보내기 창이 매팅 출력으로 열림
+- **2.5.0-PAN.1**: 첫 빌드 (외곽 안정화, 원클릭 누끼, 한국어 화면, 원클릭 설치)
+
+## 원본
+
+Sammie-Roto 2 — Zarxrax, https://github.com/Zarxrax/Sammie-Roto-2 (GPL-3.0)
