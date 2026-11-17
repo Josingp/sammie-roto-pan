@@ -44,7 +44,7 @@ from sammie.gui_widgets import (
 
 # ==================== VERSION ====================
 
-__version__ = "2.5.0-PAN.5"
+__version__ = "2.5.0-PAN.6"
 
 # ==================== LOGGING HELPER ====================
 
@@ -93,6 +93,10 @@ class SegmentationTab(QWidget):
         # PAN: 글자로 대상 찾기 (SAM 3.1)
         self.text_find_group = pan_features.TextFindGroup()
         layout.addWidget(self.text_find_group)
+
+        # PAN: 외곽 그려서 지정
+        self.outline_group = pan_features.OutlineGroup()
+        layout.addWidget(self.outline_group)
 
         # PAN: 원클릭 누끼
         self.one_click_btn = pan_features.make_one_click_button()
@@ -1299,6 +1303,8 @@ class MainWindow(QMainWindow):
             # PAN
             seg_tab.one_click_btn.clicked.connect(lambda: pan_features.run_one_click(self))
             seg_tab.text_find_group.find_btn.clicked.connect(lambda: pan_features.run_text_find(self))
+            seg_tab.outline_group.draw_btn.toggled.connect(
+                lambda on: pan_features.start_outline(self) if on else pan_features.stop_outline(self))
             seg_tab.stab_group.run_btn.clicked.connect(lambda: pan_features.run_stabilize(self, "mask"))
             seg_tab.stab_group.restore_btn.clicked.connect(lambda: pan_features.restore_stabilize(self, "mask"))
             seg_tab.stab_group.compare_btn.pressed.connect(lambda: pan_features.compare_press(self, "mask"))

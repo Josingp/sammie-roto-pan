@@ -401,6 +401,51 @@ class SamManager(core.CallbackMixin):
         self._save_text_prompts(prompts)
         self._apply_mask(frame_number, object_id, mask_bool)
 
+    def refine_in_region(self, frame_number, object_id, region_mask, anchor):
+        """그린 영역 안에서 SAM 2가 실제 외곽을 찾게 한다.
+        영역의 사각형(box) + 안쪽 기준점으로 분할한 뒤, 그린 영역(조금 넓힌) 밖은 잘라낸다.
+        상태는 미리보기처럼 되돌려 두고, 결과 마스크만 돌려준다. 실패하면 None."""
+        if self.predictor is None or self.inference_state is None:
+            return None
+        ys, xs = np.nonzero(region_mask)
+        if len(xs) == 0:
+            return None
+        box = np.array([xs.min(), ys.min(), xs.max(), ys.max()], dtype=np.float32)
+        snapshot = self._snapshot_frame_state(object_id, frame_number)
+        try:
+            self._clear_frame_if_tracked(object_id, frame_number)
+            _, out_obj_ids, out_mask_logits = self.predictor.add_new_points_or_box(
+                inference_state=self.inference_state,
+                frame_idx=frame_number,
+                obj_id=object_id,
+                points=np.array([anchor], dtype=np.float32),
+                labels=np.array([1], dtype=np.int32),
+                box=box,
+                clear_old_points=True,
+            )
+            sam = None
+            for i, oid in enumerate(out_obj_ids):
+                if oid == object_id:
+                    sam = (out_mask_logits[i] > 0.0).cpu().numpy().squeeze()
+            if sam is None:
+                return None
+        except Exception as e:
+            print(f"외곽 다듬기 실패(그린 모양 그대로 사용): {e}")
+            return None
+        finally:
+            self._restore_frame_state(frame_number, snapshot)
+        # 그린 선에서 조금 벗어난 머리카락·옷자락 정도는 허용하고, 그 밖은 자른다
+        h, w = region_mask.shape
+        margin = max(5, int(round(min(h, w) * 0.01)))
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * margin + 1, 2 * margin + 1))
+        allowed = cv2.dilate(region_mask.astype(np.uint8), k) > 0
+        refined = sam & allowed
+        # SAM이 엉뚱한 걸 잡았으면(그린 영역의 30% 미만) 그린 모양을 그대로 쓴다
+        if refined.sum() < 0.3 * region_mask.sum():
+            print("외곽 다듬기 결과가 그린 영역과 많이 달라서, 그린 모양을 그대로 씁니다.")
+            return None
+        return refined
+
     def apply_text_prompts(self, points_list):
         """기준점 하나만 남아 있는 (프레임, 오브젝트)에는 SAM 3.1 마스크를 다시 넣는다.
         사용자가 그 프레임에 점을 더 찍었으면 점 기준으로 두고, 기준점이 지워졌으면 기록도 지운다."""

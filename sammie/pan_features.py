@@ -544,3 +544,272 @@ def run_text_find(main_window):
             main_window.sidebar.segmentation_tab.get_selected_object_id())
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# 외곽 그려서 지정: 다각형/자유곡선으로 대략 그리면 SAM 2가 다듬고 따라간다
+# ---------------------------------------------------------------------------
+
+from PySide6.QtCore import QEvent, QObject, QPointF
+from PySide6.QtGui import QColor, QPainterPath, QPen, QBrush
+
+
+class OutlineGroup(QGroupBox):
+    def __init__(self, parent=None):
+        super().__init__("외곽 그려서 지정", parent)
+        layout = QVBoxLayout(self)
+        self.draw_btn = QPushButton("외곽 그리기 시작")
+        self.draw_btn.setCheckable(True)
+        self.draw_btn.setToolTip(
+            "선택한 오브젝트 번호로, 현재 프레임에서 대상의 외곽을 대략 그립니다.\n"
+            "그린 모양을 시작 마스크로 SAM 2가 외곽을 다듬고, 트래킹하면 영상 전체를 따라갑니다.\n"
+            "카메라가 크게 움직이면 처음·중간·끝 프레임에 한 번씩 그려 주면 더 정확합니다.")
+        layout.addWidget(self.draw_btn)
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["그린 영역 안에서 SAM이 외곽 다듬기", "그린 모양 그대로"])
+        self.mode_combo.setToolTip(
+            "다듬기: 대략 그린 영역 안에서 SAM 2가 실제 경계를 찾아 붙입니다. 그린 선 밖은 잘라냅니다.\n"
+            "그대로: 그린 다각형을 그대로 시작 마스크로 씁니다. 경계가 애매해서 SAM이 엉뚱하게 잡을 때 쓰세요.")
+        layout.addWidget(self.mode_combo)
+        help_lbl = QLabel(
+            "좌클릭: 꼭짓점 추가 · 누른 채 끌기: 자유곡선\n"
+            "우클릭/Backspace: 되돌리기 · 더블클릭/Enter/첫 점 클릭: 완료\n"
+            "Esc: 취소 · 휠/가운데 버튼: 확대·이동")
+        help_lbl.setWordWrap(True)
+        help_lbl.setStyleSheet("QLabel { color: palette(mid); font-size: 11px; }")
+        layout.addWidget(help_lbl)
+
+
+class OutlineDrawer(QObject):
+    """ImageViewer 위에 다각형을 그리는 도구. 뷰어 코드를 고치지 않고 이벤트 필터로 동작한다."""
+
+    def __init__(self, viewer, on_finish, on_cancel):
+        super().__init__(viewer)
+        self.viewer = viewer
+        self.on_finish = on_finish
+        self.on_cancel = on_cancel
+        self.active = False
+        self.pts = []
+        self.cursor_pt = None
+        self.dragging = False
+        self.item = None
+        self.dots = None
+        viewer.viewport().installEventFilter(self)
+        viewer.installEventFilter(self)
+
+    # -- 상태 ---------------------------------------------------------------
+    def start(self):
+        self.active = True
+        self.pts = []
+        self.cursor_pt = None
+        scene = self.viewer.graphics_scene
+        if self.item is None:
+            self.item = scene.addPath(QPainterPath())
+            self.item.setZValue(1000)
+            self.dots = scene.addPath(QPainterPath())
+            self.dots.setZValue(1001)
+        pen = QPen(QColor(255, 220, 0), 2)
+        pen.setCosmetic(True)
+        self.item.setPen(pen)
+        self.dots.setPen(QPen(Qt.NoPen))
+        self.dots.setBrush(QBrush(QColor(255, 220, 0)))
+        self.item.setVisible(True)
+        self.dots.setVisible(True)
+        self.viewer.viewport().setCursor(Qt.CrossCursor)
+        self.viewer.setFocus()
+        self._redraw()
+
+    def stop(self):
+        self.active = False
+        self.dragging = False
+        self.pts = []
+        if self.item is not None:
+            self.item.setVisible(False)
+            self.dots.setVisible(False)
+        self.viewer.viewport().setCursor(Qt.ArrowCursor)
+
+    def _finish(self):
+        pts = list(self.pts)
+        self.stop()
+        if len(pts) >= 3:
+            self.on_finish(pts)
+        else:
+            self.on_cancel()
+
+    def _cancel(self):
+        self.stop()
+        self.on_cancel()
+
+    # -- 좌표 ---------------------------------------------------------------
+    def _scene_pt(self, pos):
+        p = self.viewer.mapToScene(pos.toPoint())
+        pm = self.viewer.original_pixmap
+        x, y = p.x(), p.y()
+        if pm is not None:
+            x = min(max(x, 0), pm.width() - 1)
+            y = min(max(y, 0), pm.height() - 1)
+        return QPointF(x, y)
+
+    def _scale(self):
+        return max(1e-3, float(getattr(self.viewer, "current_scale", 1.0) or 1.0))
+
+    def _near_first(self, p):
+        if len(self.pts) < 3:
+            return False
+        q = self.pts[0]
+        return ((p.x() - q.x()) ** 2 + (p.y() - q.y()) ** 2) ** 0.5 * self._scale() < 10
+
+    def _redraw(self):
+        path = QPainterPath()
+        if self.pts:
+            path.moveTo(self.pts[0])
+            for p in self.pts[1:]:
+                path.lineTo(p)
+            if self.cursor_pt is not None:
+                path.lineTo(self.cursor_pt)
+                if len(self.pts) >= 2:
+                    path.lineTo(self.pts[0])
+        self.item.setPath(path)
+        dots = QPainterPath()
+        r = 3.5 / self._scale()
+        for i, p in enumerate(self.pts):
+            rr = r * (1.8 if i == 0 else 1.0)
+            dots.addEllipse(p, rr, rr)
+        self.dots.setPath(dots)
+
+    # -- 이벤트 -------------------------------------------------------------
+    def eventFilter(self, obj, ev):
+        if not self.active:
+            return False
+        t = ev.type()
+        if obj is self.viewer.viewport():
+            if t == QEvent.MouseButtonPress:
+                if ev.button() == Qt.LeftButton:
+                    p = self._scene_pt(ev.position())
+                    if self._near_first(p):
+                        self._finish()
+                        return True
+                    self.pts.append(p)
+                    self.dragging = True
+                    self._redraw()
+                    return True
+                if ev.button() == Qt.RightButton:
+                    if self.pts:
+                        self.pts.pop()
+                        self._redraw()
+                    return True
+                return False  # 가운데 버튼 이동은 원래대로
+            if t == QEvent.MouseButtonDblClick and ev.button() == Qt.LeftButton:
+                self._finish()
+                return True
+            if t == QEvent.MouseButtonRelease and ev.button() == Qt.LeftButton:
+                self.dragging = False
+                return True
+            if t == QEvent.MouseMove:
+                p = self._scene_pt(ev.position())
+                self.cursor_pt = p
+                if self.dragging and (ev.buttons() & Qt.LeftButton) and self.pts:
+                    q = self.pts[-1]
+                    if ((p.x() - q.x()) ** 2 + (p.y() - q.y()) ** 2) ** 0.5 * self._scale() > 6:
+                        self.pts.append(p)
+                self._redraw()
+                return False  # 좌표 표시·이동은 원래대로
+            return False
+        if obj is self.viewer and t == QEvent.KeyPress:
+            k = ev.key()
+            if k in (Qt.Key_Return, Qt.Key_Enter):
+                self._finish(); return True
+            if k == Qt.Key_Escape:
+                self._cancel(); return True
+            if k == Qt.Key_Backspace:
+                if self.pts:
+                    self.pts.pop(); self._redraw()
+                return True
+            if k in (Qt.Key_Shift, Qt.Key_Control):
+                return True  # 그리는 중에는 점 미리보기 끔
+        return False
+
+
+def start_outline(main_window):
+    from sammie.gui_widgets import show_message_dialog
+    grp = main_window.sidebar.segmentation_tab.outline_group
+    if core.VideoInfo.total_frames == 0:
+        grp.draw_btn.setChecked(False)
+        show_message_dialog(main_window, title="외곽 그려서 지정", message="먼저 영상을 불러와 주세요.", type="warning")
+        return
+    if not hasattr(main_window, "_outline_drawer"):
+        main_window._outline_drawer = OutlineDrawer(
+            main_window.viewer,
+            on_finish=lambda pts: apply_outline(main_window, pts),
+            on_cancel=lambda: _outline_done(main_window, None))
+    oid = main_window.sidebar.segmentation_tab.get_selected_object_id()
+    grp.draw_btn.setText(f"그리는 중... (오브젝트 {oid}) — Esc로 취소")
+    main_window._outline_drawer.start()
+    print(f"[외곽 그리기] 오브젝트 {oid}, 프레임 {main_window.frame_slider.value()} — 대상 외곽을 따라 클릭하세요.")
+
+
+def stop_outline(main_window):
+    d = getattr(main_window, "_outline_drawer", None)
+    if d is not None and d.active:
+        d.stop()
+    _outline_done(main_window, None)
+
+
+def _outline_done(main_window, msg):
+    grp = main_window.sidebar.segmentation_tab.outline_group
+    grp.draw_btn.blockSignals(True)
+    grp.draw_btn.setChecked(False)
+    grp.draw_btn.blockSignals(False)
+    grp.draw_btn.setText("외곽 그리기 시작")
+    if msg:
+        print(msg)
+
+
+def apply_outline(main_window, pts):
+    import cv2
+    import numpy as np
+    from sammie import text_finder
+    from sammie.settings_manager import get_settings_manager
+
+    frame = main_window.frame_slider.value()
+    oid = main_window.sidebar.segmentation_tab.get_selected_object_id()
+    h, w = core.VideoInfo.height, core.VideoInfo.width
+    poly = np.array([[int(round(p.x())), int(round(p.y()))] for p in pts], np.int32)
+    mask = np.zeros((h, w), np.uint8)
+    cv2.fillPoly(mask, [poly], 1)
+    mask = mask.astype(bool)
+    if mask.sum() < 50:
+        _outline_done(main_window, "[외곽 그리기] 그린 영역이 너무 작아서 취소했습니다.")
+        return
+
+    # 이 오브젝트가 이 프레임에 갖고 있던 점은 외곽으로 대체
+    pm = main_window.point_manager
+    before = len(pm.points)
+    pm.points = [p for p in pm.points if not (p['frame'] == frame and p['object_id'] == oid)]
+    removed = before - len(pm.points)
+    get_settings_manager().save_points(pm.points)
+
+    x, y = text_finder.anchor_point(mask)
+    refined_note = ""
+    if main_window.sidebar.segmentation_tab.outline_group.mode_combo.currentIndex() == 0:
+        refined = main_window.sam_manager.refine_in_region(frame, oid, mask, (x, y))
+        if refined is not None:
+            mask = refined
+            x, y = text_finder.anchor_point(mask)
+            refined_note = " SAM이 외곽을 다듬었습니다."
+    pm.add_point(frame, oid, True, x, y)
+    main_window.sam_manager.add_text_object(frame, oid, mask, (x, y), label="외곽")
+
+    sm = get_settings_manager()
+    names = dict(sm.get_session_setting("object_names", {}) or {})
+    if str(oid) not in names:
+        names[str(oid)] = f"외곽 {oid}"
+        sm.set_session_setting("object_names", names)
+    sm.save_session_settings()
+
+    main_window._refresh_table()
+    main_window._update_current_frame_display()
+    note = f" (이 프레임에 있던 점 {removed}개는 외곽으로 바꿨습니다)" if removed else ""
+    _outline_done(main_window,
+                  f"[외곽 그리기] 오브젝트 {oid}, 프레임 {frame}에 외곽을 지정했습니다{note}.{refined_note} "
+                  "다른 프레임에도 그리거나 '전체 트래킹'을 누르세요.")
