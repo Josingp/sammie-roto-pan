@@ -458,7 +458,21 @@ def ensure_models(
 # Model registry  ← edit this to add / remove models
 # ---------------------------------------------------------------------------
 
+TORCH_HUB_DIR = os.path.join("checkpoints", "torch_hub", "hub", "checkpoints")
+
 MODEL_REGISTRY: "dict[str, DownloadSpec]" = {
+    # PAN: MatAnyone이 모델을 만들 때 받아오는 ResNet 가중치. 설치 때 미리 받아 두면
+    # 이후에는 인터넷 없이 매팅할 수 있다. (TORCH_HOME = checkpoints/torch_hub)
+    "resnet18": DownloadSpec(
+        url="https://download.pytorch.org/models/resnet18-5c106cde.pth",
+        md5="e5f5fcaec0feff7287f61b7bf461e8b2",
+        dest_dir=TORCH_HUB_DIR,
+    ),
+    "resnet50": DownloadSpec(
+        url="https://download.pytorch.org/models/resnet50-19c8e357.pth",
+        md5="9e9c86b324d80e65229fab49b8d9a8e8",
+        dest_dir=TORCH_HUB_DIR,
+    ),
     "Large": DownloadSpec(
         url="https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt",
         md5="2b30654b6112c42a115563c638d238d9",

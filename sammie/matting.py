@@ -194,11 +194,11 @@ class MatAnyManager(MattingManager):
 
         if matting_model == "MatAnyone2":
             checkpoint = "./checkpoints/matanyone2.pth"
-            if not ensure_models("matanyone2", parent=parent_window):
+            if not ensure_models(["matanyone2", "resnet18", "resnet50"], parent=parent_window):
                 return False  # user cancelled or download failed
         else:
             checkpoint = "./checkpoints/matanyone.pth"
-            if not ensure_models("matanyone", parent=parent_window):
+            if not ensure_models(["matanyone", "resnet18", "resnet50"], parent=parent_window):
                 return False  # user cancelled or download failed
 
         matanyone = get_matanyone_model(checkpoint, device=device)

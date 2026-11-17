@@ -4,6 +4,10 @@ from PySide6.QtCore import Qt, QLockFile, QDir, QTimer
 import sys
 import argparse
 import os
+# PAN: 모델 가중치를 프로그램 폴더 안에서 찾게 해서 설치 후에는 인터넷 없이 동작
+os.environ.setdefault("TORCH_HOME", os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints", "torch_hub"))
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 import traceback
 from sammie.resources import resources
 
