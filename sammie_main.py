@@ -44,7 +44,7 @@ from sammie.gui_widgets import (
 
 # ==================== VERSION ====================
 
-__version__ = "2.5.0-PAN.6"
+__version__ = "2.5.0-PAN.7"
 
 # ==================== LOGGING HELPER ====================
 
@@ -531,7 +531,9 @@ class MattingTab(QWidget):
         processing_layout.addWidget(self.combined_mask_checkbox)
         layout.addWidget(processing_group)
 
-        # PAN: 외곽 안정화 (매트)
+        # PAN: 헤어 디테일 보정 → 외곽 안정화 (매트). 처리 순서대로 위에서 아래로 둔다.
+        self.detail_group = pan_features.DetailGroup()
+        layout.addWidget(self.detail_group)
         self.stab_group = pan_features.StabilizeGroup("matte")
         layout.addWidget(self.stab_group)
         self.decontam_checkbox = pan_features.make_decontam_checkbox()
@@ -1145,6 +1147,7 @@ class Sidebar(QWidget):
         self.segmentation_tab.load_values_from_settings()
         self.matting_tab.load_values_from_settings()
         self.matting_tab.stab_group.load_values_from_settings()
+        self.matting_tab.detail_group.load_values_from_settings()
         self.matting_tab.decontam_checkbox.setChecked(bool(get_settings_manager().get_session_setting("matte_decontam", True)))
         self.removal_tab.load_values_from_settings()
 
@@ -1330,6 +1333,10 @@ class MainWindow(QMainWindow):
             matting_tab.run_matting_btn.clicked.connect(self.run_matting)
             matting_tab.clear_matting_btn.clicked.connect(self.clear_matting)
             # PAN
+            matting_tab.detail_group.run_btn.clicked.connect(lambda: pan_features.run_detail(self))
+            matting_tab.detail_group.restore_btn.clicked.connect(lambda: pan_features.restore_detail(self))
+            matting_tab.detail_group.compare_btn.pressed.connect(lambda: pan_features.detail_compare_press(self))
+            matting_tab.detail_group.compare_btn.released.connect(lambda: pan_features.detail_compare_release(self))
             matting_tab.stab_group.run_btn.clicked.connect(lambda: pan_features.run_stabilize(self, "matte"))
             matting_tab.stab_group.restore_btn.clicked.connect(lambda: pan_features.restore_stabilize(self, "matte"))
             matting_tab.stab_group.compare_btn.pressed.connect(lambda: pan_features.compare_press(self, "matte"))

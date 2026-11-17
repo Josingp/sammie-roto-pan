@@ -473,6 +473,12 @@ MODEL_REGISTRY: "dict[str, DownloadSpec]" = {
         md5="9e9c86b324d80e65229fab49b8d9a8e8",
         dest_dir=TORCH_HUB_DIR,
     ),
+    # PAN.7: 헤어 디테일 보정용 ViTMatte-S (Composition-1k, Apache-2.0)
+    "vitmatte_s": DownloadSpec(
+        url="https://huggingface.co/hustvl/vitmatte-small-composition-1k/resolve/main/model.safetensors",
+        md5="df8bd5b9af32d117273e6a5296e98786",
+        dest_dir=os.path.join("checkpoints", "vitmatte_small"),
+    ),
     "Large": DownloadSpec(
         url="https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt",
         md5="2b30654b6112c42a115563c638d238d9",

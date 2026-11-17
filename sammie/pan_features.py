@@ -19,6 +19,7 @@ from sammie.settings_manager import get_settings_manager
 
 MASK_STAB_BACKUP = os.path.join(core.temp_dir, "masks_stab_backup")
 MATTE_STAB_BACKUP = os.path.join(core.temp_dir, "matting_stab_backup")
+MATTE_DETAIL_BACKUP = os.path.join(core.temp_dir, "matting_detail_backup")   # 헤어 디테일 보정 전 매트
 
 KINDS = {
     # kind: (대상 폴더, 백업 폴더, 강도 키, 범위 키, 활성 플래그 키, 소프트 여부, 밴드 px)
@@ -98,6 +99,86 @@ class StabilizeGroup(QGroupBox):
         self.radius_slider.setValue(int(sm.get_session_setting(radius_key, 2)))
 
 
+class DetailGroup(QGroupBox):
+    """헤어 디테일 보정 설정 + 실행/복원 버튼 (매팅 탭)"""
+
+    QUALITIES = ["표준", "고정밀(2배)"]
+
+    def __init__(self, parent=None):
+        super().__init__("헤어 디테일 보정 (머리카락·잔털)", parent)
+        sm = get_settings_manager()
+        layout = QVBoxLayout(self)
+        grid = QGridLayout()
+
+        tip_band = ("매트 외곽에서 얼마나 넓게 다시 살펴볼지 정합니다.\n"
+                    "넓히면 매팅이 놓친 바깥쪽 잔머리까지 찾지만, 배경이 머리색과 비슷하면 배경이 묻어 들어올 수 있습니다.\n"
+                    "3이 기본, 잔머리가 덜 따지면 4~5, 배경이 묻으면 1~2.")
+        lbl = QLabel("탐색 폭:")
+        lbl.setToolTip(tip_band)
+        self.band_slider = QSlider(Qt.Horizontal)
+        self.band_slider.setRange(1, 5)
+        self.band_slider.setValue(int(sm.get_session_setting("detail_band", 3)))
+        self.band_slider.setToolTip(tip_band)
+        self.band_value = QLabel(str(self.band_slider.value()))
+        self.band_value.setMinimumWidth(30)
+        self.band_value.setAlignment(Qt.AlignCenter)
+        self.band_slider.valueChanged.connect(lambda v: self.band_value.setText(str(v)))
+        self.band_slider.valueChanged.connect(lambda v: get_settings_manager().set_session_setting("detail_band", int(v)))
+        grid.addWidget(lbl, 0, 0)
+        grid.addWidget(self.band_slider, 0, 1)
+        grid.addWidget(self.band_value, 0, 2)
+
+        tip_q = ("표준: 원본 해상도 그대로 계산합니다. (기본)\n"
+                 "고정밀(2배): 두 배로 키워서 계산합니다. 4배쯤 느리고, 영상에 따라 더 좋아지기도 나빠지기도 하니\n"
+                 "표준 결과가 아쉬울 때 비교해 보고 쓰세요.")
+        qlbl = QLabel("정밀도:")
+        qlbl.setToolTip(tip_q)
+        self.quality_combo = QComboBox()
+        self.quality_combo.addItems(self.QUALITIES)
+        self.quality_combo.setToolTip(tip_q)
+        q = str(sm.get_session_setting("detail_quality", "표준"))
+        self.quality_combo.setCurrentText(q if q in self.QUALITIES else "표준")
+        self.quality_combo.currentTextChanged.connect(
+            lambda v: get_settings_manager().set_session_setting("detail_quality", v))
+        grid.addWidget(qlbl, 1, 0)
+        grid.addWidget(self.quality_combo, 1, 1, 1, 2)
+        layout.addLayout(grid)
+
+        row = QHBoxLayout()
+        self.run_btn = QPushButton("헤어 디테일 보정")
+        self.run_btn.setToolTip(
+            "매팅 결과를 길잡이로 삼아, 외곽의 불확실한 띠만 원본 해상도에서 다시 계산합니다 (ViTMatte).\n"
+            "VideoMaMa 처럼 외곽이 부드럽게 번지는 매트, 내부 해상도보다 큰 영상(4K 등)에서 효과가 큽니다.\n"
+            "안쪽·바깥쪽 확실한 부분은 건드리지 않고, 원본은 백업됩니다. (매팅을 먼저 실행하세요)")
+        self.restore_btn = QPushButton("원본 복원")
+        self.restore_btn.setToolTip("보정 전 매트로 되돌립니다.")
+        row.addWidget(self.run_btn, 3)
+        row.addWidget(self.restore_btn, 1)
+        layout.addLayout(row)
+
+        self.compare_btn = QPushButton("누르고 있으면 보정 전 보기")
+        self.compare_btn.setToolTip("버튼을 누르고 있는 동안 보정 전 매트를 보여줍니다. 떼면 보정 결과로 돌아옵니다.")
+        layout.addWidget(self.compare_btn)
+
+        self.one_click_cb = QCheckBox("원클릭 누끼에 포함")
+        self.one_click_cb.setToolTip("켜 두면 원클릭 누끼가 매팅 다음에 헤어 디테일 보정까지 자동으로 합니다.")
+        self.one_click_cb.setChecked(bool(sm.get_session_setting("detail_one_click", True)))
+        self.one_click_cb.stateChanged.connect(
+            lambda _: get_settings_manager().set_session_setting("detail_one_click", self.one_click_cb.isChecked()))
+        layout.addWidget(self.one_click_cb)
+
+        self.result_label = QLabel("")
+        self.result_label.setWordWrap(True)
+        layout.addWidget(self.result_label)
+
+    def load_values_from_settings(self):
+        sm = get_settings_manager()
+        self.band_slider.setValue(int(sm.get_session_setting("detail_band", 3)))
+        q = str(sm.get_session_setting("detail_quality", "표준"))
+        self.quality_combo.setCurrentText(q if q in self.QUALITIES else "표준")
+        self.one_click_cb.setChecked(bool(sm.get_session_setting("detail_one_click", True)))
+
+
 def make_decontam_checkbox():
     cb = QCheckBox("외곽 색 번짐 제거 (배경색 빼기)")
     cb.setToolTip(
@@ -119,6 +200,8 @@ def compare_press(main_window, kind):
     if not os.path.exists(backup):
         print("비교할 원본이 없습니다 (아직 안정화하지 않았습니다).")
         return
+    if kind in _compare_saved or (kind == "matte" and "detail" in _compare_saved):
+        return
     attr = "mask_dir" if kind == "mask" else "matting_dir"
     _compare_saved[kind] = getattr(core, attr)
     setattr(core, attr, backup)
@@ -131,6 +214,24 @@ def compare_release(main_window, kind):
         main_window._update_current_frame_display()
 
 
+def detail_compare_press(main_window):
+    """누르는 동안 헤어 디테일 보정 전 매트를 보여준다."""
+    if not os.path.exists(MATTE_DETAIL_BACKUP):
+        print("비교할 원본이 없습니다 (아직 헤어 디테일 보정을 하지 않았습니다).")
+        return
+    if "detail" in _compare_saved or "matte" in _compare_saved:
+        return
+    _compare_saved["detail"] = core.matting_dir
+    core.matting_dir = MATTE_DETAIL_BACKUP
+    main_window._update_current_frame_display()
+
+
+def detail_compare_release(main_window):
+    if "detail" in _compare_saved:
+        core.matting_dir = _compare_saved.pop("detail")
+        main_window._update_current_frame_display()
+
+
 def _group_for(main_window, kind):
     try:
         tab = main_window.sidebar.segmentation_tab if kind == "mask" else main_window.sidebar.matting_tab
@@ -140,11 +241,11 @@ def _group_for(main_window, kind):
 
 
 def make_one_click_button():
-    btn = QPushButton("원클릭 누끼\n트래킹 → 매팅 → 안정화 → 내보내기")
+    btn = QPushButton("원클릭 누끼\n트래킹 → 매팅 → 헤어 디테일 → 안정화 → 내보내기")
     btn.setToolTip(
         "점을 찍은 뒤 이 버튼 하나로 끝까지 진행합니다.\n"
         "1) 전체 트래킹  2) 마스크 외곽 안정화  3) 매팅(머리카락 등 반투명 외곽)\n"
-        "4) 매트 외곽 안정화  5) 내보내기 창 열기\n"
+        "4) 헤어 디테일 보정  5) 매트 외곽 안정화  6) 내보내기 창 열기\n"
         "매팅 모델과 해상도는 이 PC의 그래픽카드 메모리에 맞춰 자동으로 정하고,\n메모리가 모자라면 설정을 낮춰 다시 시도합니다.")
     btn.setMinimumHeight(46)
     btn.setStyleSheet("QPushButton { font-weight: bold; }")
@@ -160,11 +261,26 @@ def invalidate(kind):
     get_settings_manager().set_session_setting(flag, False)
     if os.path.exists(backup):
         shutil.rmtree(backup, ignore_errors=True)
+    if kind == "matte":
+        # 매트가 새로 만들어지면 헤어 디테일 보정도 처음부터
+        get_settings_manager().set_session_setting("detail_active", False)
+        if os.path.exists(MATTE_DETAIL_BACKUP):
+            shutil.rmtree(MATTE_DETAIL_BACKUP, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # 실행
 # ---------------------------------------------------------------------------
+
+def _merge_tree(src_dir, dst_dir):
+    """src_dir 의 파일들을 같은 경로로 dst_dir 에 덮어쓴다 (dst 에만 있는 파일은 그대로 둔다)."""
+    for root, _, files in os.walk(src_dir):
+        rel = os.path.relpath(root, src_dir)
+        out = dst_dir if rel == "." else os.path.join(dst_dir, rel)
+        os.makedirs(out, exist_ok=True)
+        for name in files:
+            shutil.copyfile(os.path.join(root, name), os.path.join(out, name))
+
 
 def _has_output(folder, start, end):
     if not os.path.isdir(folder):
@@ -191,9 +307,9 @@ def run_stabilize(main_window, kind, quiet=False):
         return False
 
     # 원본 백업: 이미 안정화된 상태가 아니면 현재 결과를 원본으로 저장
-    if not sm.get_session_setting(flag, False) or not os.path.exists(backup):
+    had_backup = bool(sm.get_session_setting(flag, False)) and os.path.exists(backup)
+    if not had_backup:
         ts.make_backup(target, backup)
-        sm.set_session_setting(flag, True)
 
     strength = sm.get_session_setting(strength_key, 70) / 100.0
     radius = int(sm.get_session_setting(radius_key, 2))
@@ -210,18 +326,31 @@ def run_stabilize(main_window, kind, quiet=False):
 
     print(f"외곽 안정화 시작 ({'마스크' if kind == 'mask' else '매트'}, 강도 {int(strength*100)}, 참조 ±{radius}프레임)")
     stats = {}
-    result = ts.stabilize_folder(
-        backup, target, core.load_base_frame, start, end,
-        strength=strength, radius=radius, band_px=band_px, soft=soft,
-        progress_fn=on_progress, cancel_fn=progress.wasCanceled, stats=stats)
+    # 작업 폴더에 먼저 쓰고, 끝까지 됐을 때만 결과 폴더에 반영한다.
+    # (도중에 취소해도 이전 상태 — 원본이든 이전 안정화 결과든 — 가 그대로 남는다)
+    work = target + "_stab_work"
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        result = ts.stabilize_folder(
+            backup, work, core.load_base_frame, start, end,
+            strength=strength, radius=radius, band_px=band_px, soft=soft,
+            progress_fn=on_progress, cancel_fn=progress.wasCanceled, stats=stats)
+    except Exception as e:
+        print(f"외곽 안정화 중 오류: {e}")
+        result = -1
     progress.close()
 
-    if result < 0:
-        # 취소 → 반쯤 처리된 상태를 남기지 않도록 원본 복원
-        ts.restore_backup(target, backup)
-        print("외곽 안정화 취소됨 (원본 유지)")
+    if result <= 0:
+        shutil.rmtree(work, ignore_errors=True)
+        if not had_backup:
+            shutil.rmtree(backup, ignore_errors=True)
+        print("외곽 안정화 취소됨 (이전 상태 그대로)")
         main_window._update_current_frame_display()
         return False
+
+    _merge_tree(work, target)
+    shutil.rmtree(work, ignore_errors=True)
+    sm.set_session_setting(flag, True)
 
     print(f"외곽 안정화 완료: {result}프레임")
     before, after = stats.get("before", 0.0), stats.get("after", 0.0)
@@ -248,6 +377,198 @@ def restore_stabilize(main_window, kind):
     grp = _group_for(main_window, kind)
     if grp is not None:
         grp.result_label.setText("")
+    main_window._update_current_frame_display()
+
+
+# ---------------------------------------------------------------------------
+# 헤어 디테일 보정 (ViTMatte)
+#   매팅 원본(R) → 디테일 보정 D(R) → 외곽 안정화 S(·) 순서로 쌓인다.
+#   matting_detail_backup = R (보정이 켜져 있을 때만 존재)
+#   matting_stab_backup   = 안정화의 입력 (R 또는 D(R))
+# ---------------------------------------------------------------------------
+
+def _detail_group(main_window):
+    try:
+        return main_window.sidebar.matting_tab.detail_group
+    except Exception:
+        return None
+
+
+def _detail_cap_factor(object_id):
+    """매팅이 원본보다 줄여서 계산된 배율(>=1). 매트 위치 오차가 그만큼 커지므로 탐색 띠를 넓히는 데 쓴다."""
+    sm = get_settings_manager()
+    try:
+        res = int(sm.get_session_setting("matany_res", 0) or 0)
+    except Exception:
+        res = 0
+    if res <= 0:
+        return 1.0
+    short = min(core.VideoInfo.width or 0, core.VideoInfo.height or 0)
+    if short <= 0:
+        return 1.0
+    if sm.get_session_setting("matany_model", "MatAnyone2") == "VideoMaMa" and not sm.get_session_setting("matany_combined", False):
+        # VideoMaMa 는 오브젝트 주변만 잘라서 계산한다 → 잘린 영역의 짧은 변이 기준
+        try:
+            start, end, total = core.get_frame_range()
+            step = max(1, total // 40)
+            rect = core.compute_mask_bounding_box(range(start, end + 1, step), [object_id])
+            if rect:
+                short = max(8, min(rect[2] - rect[0], rect[3] - rect[1]))
+        except Exception:
+            pass
+    return max(1.0, min(4.0, short / float(res)))
+
+
+def _detail_scale(quality):
+    """계산 배율: 표준 1배 / 고정밀 2배"""
+    return 2.0 if str(quality).startswith("고정밀") else 1.0
+
+
+def _detail_mix(cap):
+    """보정 결과를 얼마나 쓸지(0~1). 나머지는 매팅 원본.
+    - VideoMaMa(외곽이 번짐)나 줄여서 계산된 매트: 보정 결과를 그대로 쓴다.
+    - MatAnyone 이 원본 해상도로 계산한 매트: 이미 세밀하므로 반반 섞는 쪽이 오차가 가장 작았다."""
+    sm = get_settings_manager()
+    if sm.get_session_setting("matany_model", "MatAnyone2") == "VideoMaMa" or cap >= 1.3:
+        return 1.0
+    return 0.5
+
+
+_detail_status = {"last": ""}        # "ok" / "cancel" / "error" — 원클릭이 취소와 오류를 구분하는 데 쓴다
+
+
+def run_detail(main_window, quiet=False):
+    """헤어 디테일 보정. 반환: True(완료) / False(취소·불가). 이유는 _detail_status["last"]"""
+    _detail_status["last"] = "error"
+    from sammie import hair_detail as hd
+    from sammie.gui_widgets import show_message_dialog
+    from sammie.model_downloader import ensure_models
+
+    sm = get_settings_manager()
+    start, end, total = core.get_frame_range()
+    target = KINDS["matte"][0]
+
+    if not _has_output(target, start, end):
+        if not quiet:
+            show_message_dialog(main_window, title="헤어 디테일 보정", message="먼저 매팅을 실행해 주세요.", type="warning")
+        return False
+    if not ensure_models([hd.MODEL_KEY], parent=main_window):
+        print("헤어 디테일 보정: 모델(ViTMatte)을 받지 못했습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.")
+        return False
+
+    stab_on = bool(sm.get_session_setting("matte_stab_active", False)) and os.path.exists(MATTE_STAB_BACKUP)
+    detail_on = bool(sm.get_session_setting("detail_active", False)) and os.path.exists(MATTE_DETAIL_BACKUP)
+    # 보정의 입력은 항상 매팅 원본
+    if detail_on:
+        raw = MATTE_DETAIL_BACKUP
+    elif stab_on:
+        raw = MATTE_STAB_BACKUP
+    else:
+        raw = target
+
+    band_level = int(sm.get_session_setting("detail_band", 3))
+    quality = str(sm.get_session_setting("detail_quality", "표준"))
+    band = hd.BAND_SCALE.get(band_level, 1.0)
+
+    progress = QProgressDialog("헤어 디테일 보정 중...", "취소", 0, total, main_window)
+    progress.setWindowTitle("헤어 디테일 보정")
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setMinimumDuration(0)
+    progress.setValue(0)
+    QApplication.processEvents()
+
+    def on_progress(done, tot):
+        progress.setValue(done)
+        QApplication.processEvents()
+
+    device = core.DeviceManager.get_device()
+    print(f"헤어 디테일 보정 시작 (탐색 폭 {band_level}, 정밀도 {quality}, {str(device).upper()})")
+    work = target + "_detail_work"
+    shutil.rmtree(work, ignore_errors=True)
+    stats = {}
+    result, error = -1, None
+    sam = getattr(main_window, "sam_manager", None)
+    try:
+        if sam is not None:
+            sam.offload_model_to_cpu()          # GPU 메모리 확보
+        result = hd.refine_folder(
+            raw, work, core.load_base_frame, start, end, device,
+            band=band, cap_fn=_detail_cap_factor, scale=_detail_scale(quality), mix_fn=_detail_mix,
+            progress_fn=on_progress, cancel_fn=progress.wasCanceled, stats=stats)
+    except Exception as e:
+        error = e
+    finally:
+        hd.unload_model()
+        try:
+            if sam is not None:
+                sam.load_model_to_device()
+        except Exception as e:
+            print(f"SAM 모델을 다시 올리지 못했습니다: {e}")
+        progress.close()
+
+    if error is not None or result <= 0:
+        shutil.rmtree(work, ignore_errors=True)
+        if error is not None:
+            oom = "out of memory" in str(error).lower()
+            msg = ("GPU 메모리가 부족해서 헤어 디테일 보정을 끝내지 못했습니다.\n정밀도를 '표준'으로 바꾸거나 In/Out 마커로 구간을 나눠 다시 시도해 보세요."
+                   if oom else f"헤어 디테일 보정 중 오류가 났습니다.\n{error}")
+            print(msg.replace("\n", " "))
+            if not quiet:
+                show_message_dialog(main_window, title="헤어 디테일 보정", message=msg, type="warning")
+        else:
+            _detail_status["last"] = "cancel"
+            print("헤어 디테일 보정 취소됨 (이전 상태 그대로)")
+        main_window._update_current_frame_display()
+        return False
+
+    if not detail_on:
+        ts.make_backup(raw, MATTE_DETAIL_BACKUP)        # 보정 전 원본 보관
+    _merge_tree(work, MATTE_STAB_BACKUP if stab_on else target)
+    shutil.rmtree(work, ignore_errors=True)
+    sm.set_session_setting("detail_active", True)
+
+    n = stats.get("objects", 0)
+    msg = (f"헤어 디테일 보정 완료: {result}프레임 · 매트 {n}장"
+           + (f" (장당 외곽 띠 약 {int(round(stats['band_px'] / n, -2)):,}픽셀 재계산)" if n else ""))
+    print(msg)
+    grp = _detail_group(main_window)
+    if grp is not None:
+        grp.result_label.setText(msg + "\n'누르고 있으면 보정 전 보기'로 비교해 보세요.")
+
+    if stab_on:
+        # 안정화가 켜져 있었으면 보정된 매트로 다시 안정화
+        print("보정된 매트로 외곽 안정화를 다시 적용합니다.")
+        if not run_stabilize(main_window, "matte", quiet=True):
+            # 다시 안정화하지 못하면 화면의 매트가 보정 전 것으로 남으므로, 안정화를 풀어 보정된 매트를 그대로 보여준다
+            restore_stabilize(main_window, "matte")
+            print("안정화를 다시 적용하지 못해 해제했습니다. 보정된 매트는 적용돼 있습니다. 필요하면 '매트 외곽 안정화'를 다시 눌러 주세요.")
+    sm.save_session_settings()
+    main_window._update_current_frame_display()
+    _detail_status["last"] = "ok"
+    return True
+
+
+def restore_detail(main_window):
+    sm = get_settings_manager()
+    target = KINDS["matte"][0]
+    grp = _detail_group(main_window)
+    if grp is not None:
+        grp.result_label.setText("")
+    if not (bool(sm.get_session_setting("detail_active", False)) and os.path.exists(MATTE_DETAIL_BACKUP)):
+        print("복원할 원본이 없습니다 (아직 헤어 디테일 보정을 하지 않았습니다).")
+        sm.set_session_setting("detail_active", False)
+        return
+    stab_on = bool(sm.get_session_setting("matte_stab_active", False)) and os.path.exists(MATTE_STAB_BACKUP)
+    ts.restore_backup(MATTE_STAB_BACKUP if stab_on else target, MATTE_DETAIL_BACKUP)
+    shutil.rmtree(MATTE_DETAIL_BACKUP, ignore_errors=True)
+    sm.set_session_setting("detail_active", False)
+    print("헤어 디테일 보정 전 매트로 복원했습니다.")
+    if stab_on:
+        print("복원한 매트로 외곽 안정화를 다시 적용합니다.")
+        if not run_stabilize(main_window, "matte", quiet=True):
+            restore_stabilize(main_window, "matte")
+            print("안정화를 다시 적용하지 못해 해제했습니다. 필요하면 '매트 외곽 안정화'를 다시 눌러 주세요.")
+    sm.save_session_settings()
     main_window._update_current_frame_display()
 
 
@@ -364,22 +685,30 @@ def run_one_click(main_window):
 
     start, end, _ = core.get_frame_range()
 
+    sm = get_settings_manager()
+    use_detail = bool(sm.get_session_setting("detail_one_click", True))
+    steps = 6 if use_detail else 5
+    step = [0]
+
+    def announce(name):
+        step[0] += 1
+        print(f"[원클릭 {step[0]}/{steps}] {name}")
+
     # 1) 트래킹
-    print("[원클릭 1/5] 트래킹")
+    announce("트래킹")
     main_window.track_objects()
     if not _has_output(core.mask_dir, start, end):
         print("원클릭 중단: 트래킹이 끝나지 않았습니다.")
         return
 
     # 2) 마스크 안정화
-    print("[원클릭 2/5] 마스크 외곽 안정화")
+    announce("마스크 외곽 안정화")
     if not run_stabilize(main_window, "mask", quiet=True):
         print("원클릭 중단: 마스크 안정화 취소")
         return
 
     # 3) 매팅
-    print("[원클릭 3/5] 매팅")
-    sm = get_settings_manager()
+    announce("매팅")
     if not run_matting_auto(main_window):
         print("원클릭 중단: 매팅이 끝나지 않았습니다.")
         return
@@ -387,14 +716,23 @@ def run_one_click(main_window):
         print("원클릭 중단: 매팅이 끝나지 않았습니다.")
         return
 
-    # 4) 매트 안정화
-    print("[원클릭 4/5] 매트 외곽 안정화")
+    # 4) 헤어 디테일 보정 (끌 수 있음). 실패해도 매팅 결과는 그대로이므로 계속 진행한다.
+    if use_detail:
+        announce("헤어 디테일 보정")
+        if not run_detail(main_window, quiet=True):
+            if _detail_status["last"] == "cancel":
+                print("원클릭 중단: 헤어 디테일 보정 취소")
+                return
+            print("헤어 디테일 보정을 건너뜁니다 (매팅 결과 그대로 진행).")
+
+    # 5) 매트 안정화
+    announce("매트 외곽 안정화")
     if not run_stabilize(main_window, "matte", quiet=True):
         print("원클릭 중단: 매트 안정화 취소")
         return
 
-    # 5) 매팅 탭 + 알파 보기 → 내보내기
-    print("[원클릭 5/5] 내보내기")
+    announce("내보내기")
+    # 매팅 탭 + 알파 보기 → 내보내기
     try:
         main_window.sidebar.tab_widget.setCurrentIndex(1)
         idx = main_window.view_combo.findText("Matting-BGcolor")

@@ -149,6 +149,12 @@ class SessionSettings:
     mask_stab_active: bool = False
     matte_stab_active: bool = False
     matte_decontam: bool = True
+
+    # PAN.7: 헤어 디테일 보정 (ViTMatte)
+    detail_active: bool = False
+    detail_band: int = 3            # 탐색 폭 1~5
+    detail_quality: str = "표준"     # 표준 / 고정밀(2배)
+    detail_one_click: bool = True   # 원클릭 누끼에 포함
     
     # Session metadata
     created_timestamp: str = ""

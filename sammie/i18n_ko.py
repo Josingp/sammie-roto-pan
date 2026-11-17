@@ -118,7 +118,8 @@ KO = {
         "• <b>세그멘테이션 탭에서 최소 한 프레임에 포인트를 찍은 뒤</b> 매팅 실행을 누르세요.<br>"
         "• MatAnyone 계열은 VideoMaMa보다 빠르고 VRAM을 적게 쓰지만 정확도가 조금 낮을 수 있습니다.<br>"
         "• 여러 프레임에 포인트를 찍으면 키프레임마다 매팅이 새로 잡혀서 순간적으로 흔들릴 수 있습니다.<br>"
-        "• 매팅 후 아래 <b>매트 외곽 안정화</b>를 돌리면 외곽 떨림이 줄어듭니다.<br>"
+        "• 매팅 후 아래 <b>헤어 디테일 보정</b>을 돌리면 뭉개진 머리카락 외곽이 살아납니다.<br>"
+        "• 그다음 <b>매트 외곽 안정화</b>를 돌리면 외곽 떨림이 줄어듭니다.<br>"
         "• MatAnyone은 비상업 용도 무료, <a href=\"https://github.com/pq-yang/MatAnyone?tab=License-1-ov-file\">상업 용도는 허가 필요</a>.<br>",
     "• Matting can be used to create mattes for objects with soft or poorly defined edges.<br> • <b>Add points and run tracking in the Segmentation tab</b> so that a mask is available on every frame, then press Run Matting.<br> • VideoMaMa processes the video frames in batches. There may be temporal instability at batch boundaries.<br> • VideoMaMa is free for non-commercial use and <a href=\"https://huggingface.co/stabilityai/stable-video-diffusion-img2vid/blob/main/LICENSE.md\">limited commercial use</a>.<br>":
         "• 매팅은 머리카락처럼 외곽이 부드럽거나 애매한 대상의 매트를 만듭니다.<br>"
