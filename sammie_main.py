@@ -44,7 +44,7 @@ from sammie.gui_widgets import (
 
 # ==================== VERSION ====================
 
-__version__ = "2.5.0-PAN.4"
+__version__ = "2.5.0-PAN.5"
 
 # ==================== LOGGING HELPER ====================
 
@@ -89,6 +89,10 @@ class SegmentationTab(QWidget):
         
         # Add Point group
         self._create_add_point_group(layout)
+
+        # PAN: 글자로 대상 찾기 (SAM 3.1)
+        self.text_find_group = pan_features.TextFindGroup()
+        layout.addWidget(self.text_find_group)
 
         # PAN: 원클릭 누끼
         self.one_click_btn = pan_features.make_one_click_button()
@@ -1294,6 +1298,7 @@ class MainWindow(QMainWindow):
             seg_tab.deduplicate_masks_btn.clicked.connect(self.deduplicate_similar_masks)
             # PAN
             seg_tab.one_click_btn.clicked.connect(lambda: pan_features.run_one_click(self))
+            seg_tab.text_find_group.find_btn.clicked.connect(lambda: pan_features.run_text_find(self))
             seg_tab.stab_group.run_btn.clicked.connect(lambda: pan_features.run_stabilize(self, "mask"))
             seg_tab.stab_group.restore_btn.clicked.connect(lambda: pan_features.restore_stabilize(self, "mask"))
             seg_tab.stab_group.compare_btn.pressed.connect(lambda: pan_features.compare_press(self, "mask"))

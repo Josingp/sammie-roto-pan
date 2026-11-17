@@ -10,7 +10,7 @@ import shutil
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication, QGroupBox, QGridLayout, QHBoxLayout, QLabel, QProgressDialog,
-    QCheckBox, QPushButton, QSlider, QVBoxLayout,
+    QCheckBox, QComboBox, QLineEdit, QPushButton, QSlider, QVBoxLayout,
 )
 
 from sammie import core
@@ -406,3 +406,141 @@ def run_one_click(main_window):
     if not str(sm.app_settings.export_output_type).startswith("Matting"):
         sm.set_app_setting("export_output_type", "Matting-Matte")
     main_window.export_video()
+
+
+# ---------------------------------------------------------------------------
+# 글자로 대상 찾기 (SAM 3.1 → SAM 2)
+# ---------------------------------------------------------------------------
+
+class TextFindGroup(QGroupBox):
+    def __init__(self, parent=None):
+        super().__init__("글자로 대상 찾기 (SAM 3.1)", parent)
+        layout = QVBoxLayout(self)
+        self.text_edit = QLineEdit()
+        self.text_edit.setPlaceholderText("영어로 입력: person, woman, dog, car ...")
+        self.text_edit.setToolTip(
+            "찾을 대상을 영어 단어나 짧은 문장으로 입력합니다.\n"
+            "예) person / woman with long hair / man in black suit / dog / car")
+        layout.addWidget(self.text_edit)
+        row = QHBoxLayout()
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["찾은 대상 전부", "가장 큰 1개만"])
+        self.mode_combo.setToolTip("찾은 대상을 모두 오브젝트로 만들지, 화면에서 가장 큰 하나만 쓸지 고릅니다.")
+        self.find_btn = QPushButton("현재 프레임에서 찾기")
+        self.find_btn.setToolTip(
+            "현재 프레임에서 SAM 3.1로 대상을 찾아 오브젝트로 만듭니다.\n"
+            "그다음 '전체 트래킹'(또는 원클릭 누끼)을 누르면 SAM 2가 영상 전체를 따라갑니다.\n"
+            "찾은 프레임에 점을 더 찍으면 그 프레임은 점 기준으로 다시 잡힙니다.\n"
+            "처음 찾을 때는 모델을 불러오느라 30초~1분 걸립니다.")
+        row.addWidget(self.mode_combo, 2)
+        row.addWidget(self.find_btn, 3)
+        layout.addLayout(row)
+        self.text_edit.returnPressed.connect(self.find_btn.click)
+
+
+def _free_object_ids(main_window, count):
+    used = {p['object_id'] for p in main_window.point_manager.points}
+    max_id = 20
+    try:
+        max_id = main_window.sidebar.segmentation_tab.object_spinbox.maximum()
+    except Exception:
+        pass
+    return [i for i in range(0, max_id + 1) if i not in used][:count]
+
+
+def run_text_find(main_window):
+    from sammie.gui_widgets import show_message_dialog
+    from sammie import text_finder
+
+    grp = main_window.sidebar.segmentation_tab.text_find_group
+    text = grp.text_edit.text().strip()
+    if core.VideoInfo.total_frames == 0:
+        show_message_dialog(main_window, title="글자로 대상 찾기", message="먼저 영상을 불러와 주세요.", type="warning")
+        return
+    if not text:
+        show_message_dialog(main_window, title="글자로 대상 찾기",
+                            message="찾을 대상을 영어로 입력해 주세요. (예: person)", type="warning")
+        return
+    if any("\uac00" <= ch <= "\ud7a3" for ch in text):
+        show_message_dialog(main_window, title="글자로 대상 찾기",
+                            message="SAM 3.1은 영어만 알아듣습니다. 영어로 입력해 주세요.\n예) 사람 → person, 여자 → woman, 강아지 → dog",
+                            type="warning")
+        return
+    ok, why = text_finder.is_available()
+    if not ok:
+        show_message_dialog(main_window, title="글자로 대상 찾기", message=why, type="warning")
+        return
+
+    frame = main_window.frame_slider.value()
+    image = core.load_base_frame(frame)  # RGB
+    if image is None:
+        return
+    import cv2
+    image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+    progress = QProgressDialog("SAM 3.1로 찾는 중... (처음엔 모델을 불러오느라 30초~1분)", None, 0, 0, main_window)
+    progress.setWindowTitle("글자로 대상 찾기")
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setMinimumDuration(0)
+    progress.show()
+    QApplication.processEvents()
+
+    finder = text_finder.Sam3TextFinder()
+    results = []
+    error = None
+    main_window.sam_manager.offload_model_to_cpu()   # SAM 2를 잠시 내려서 메모리 확보
+    try:
+        print(f"[글자 찾기] '{text}' — 프레임 {frame}")
+        finder.load()
+        QApplication.processEvents()
+        results = finder.find(image_bgr, text)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        error = e
+    finally:
+        finder.unload()
+        main_window.sam_manager.load_model_to_device()
+        progress.close()
+
+    if error is not None:
+        msg = str(error)
+        if "out of memory" in msg.lower():
+            msg = "GPU 메모리가 부족합니다. 다른 프로그램을 닫고 다시 시도해 주세요."
+        show_message_dialog(main_window, title="글자로 대상 찾기", message=f"찾는 중 오류가 났습니다.\n{msg}", type="warning")
+        return
+    if not results:
+        show_message_dialog(main_window, title="글자로 대상 찾기",
+                            message=f"'{text}'에 해당하는 대상을 이 프레임에서 찾지 못했습니다.\n다른 단어로 바꾸거나, 대상이 잘 보이는 프레임에서 다시 해 보세요.",
+                            type="info")
+        return
+
+    if grp.mode_combo.currentIndex() == 1:
+        results = results[:1]
+    ids = _free_object_ids(main_window, len(results))
+    if len(ids) < len(results):
+        print(f"[글자 찾기] 오브젝트 번호가 모자라 {len(ids)}개만 추가합니다.")
+        results = results[:len(ids)]
+
+    from sammie.settings_manager import get_settings_manager
+    sm = get_settings_manager()
+    names = dict(sm.get_session_setting("object_names", {}) or {})
+    for (mask, prob), oid in zip(results, ids):
+        x, y = text_finder.anchor_point(mask)
+        main_window.point_manager.add_point(frame, oid, True, x, y)
+        main_window.sam_manager.add_text_object(frame, oid, mask, (x, y), label=text)
+        names.setdefault(str(oid), f"{text} {oid}")
+        print(f"[글자 찾기] 오브젝트 {oid}: 확률 {prob:.2f}, 넓이 {int(mask.sum())}px")
+    sm.set_session_setting("object_names", names)
+    sm.save_session_settings()
+
+    main_window._refresh_table()
+    main_window._update_current_frame_display()
+    made = ", ".join(str(i) for i in ids[:len(results)])
+    print(f"[글자 찾기] {len(results)}개를 오브젝트 {made}번으로 만들었습니다. "
+          "이제 '전체 트래킹'이나 '원클릭 누끼'를 누르세요.")
+    try:
+        main_window.sidebar.segmentation_tab._update_name_display(
+            main_window.sidebar.segmentation_tab.get_selected_object_id())
+    except Exception:
+        pass

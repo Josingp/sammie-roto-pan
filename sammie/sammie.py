@@ -341,7 +341,92 @@ class SamManager(core.CallbackMixin):
                     except Exception as e:
                         print(f"Error saving mask for frame {frame_number}, object {out_obj_id}: {e}")
 
+        # PAN: 글자로 찾은 대상(SAM 3.1 마스크)을 시작 마스크로 다시 넣는다
+        self.apply_text_prompts(points_list)
+
         self._notify('replay_complete')
+
+    # ------------------------------------------------------------------
+    # PAN: 글자로 찾은 대상 → SAM 2 시작 마스크
+    # ------------------------------------------------------------------
+    TEXT_PROMPT_DIR = os.path.join(core.temp_dir, "text_prompts")
+
+    def _text_prompt_index_path(self):
+        return os.path.join(self.TEXT_PROMPT_DIR, "index.json")
+
+    def load_text_prompts(self):
+        import json
+        p = self._text_prompt_index_path()
+        if not os.path.exists(p):
+            return []
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"글자 찾기 기록을 읽지 못했습니다: {e}")
+            return []
+
+    def _save_text_prompts(self, prompts):
+        import json
+        os.makedirs(self.TEXT_PROMPT_DIR, exist_ok=True)
+        with open(self._text_prompt_index_path(), "w", encoding="utf-8") as f:
+            json.dump(prompts, f, ensure_ascii=False, indent=1)
+
+    def _apply_mask(self, frame_number, object_id, mask_bool):
+        """SAM 2에 마스크를 시작 프롬프트로 넣고, 결과 마스크를 저장한다."""
+        self._clear_frame_if_tracked(object_id, frame_number)
+        _, out_obj_ids, out_mask_logits = self.predictor.add_new_mask(
+            inference_state=self.inference_state,
+            frame_idx=frame_number,
+            obj_id=object_id,
+            mask=mask_bool,
+        )
+        for i, out_obj_id in enumerate(out_obj_ids):
+            if out_obj_id != object_id:
+                continue
+            mask_filename = os.path.join(core.mask_dir, f"{frame_number:05d}", f"{out_obj_id}.png")
+            mask = (out_mask_logits[i] > 0.0).cpu().numpy().squeeze()
+            os.makedirs(os.path.dirname(mask_filename), exist_ok=True)
+            cv2.imwrite(mask_filename, (mask * 255).astype(np.uint8))
+
+    def add_text_object(self, frame_number, object_id, mask_bool, anchor, label=""):
+        """글자로 찾은 대상 하나를 등록한다. 기준점(anchor)은 호출하는 쪽에서 포인트로 추가해 둔다."""
+        os.makedirs(self.TEXT_PROMPT_DIR, exist_ok=True)
+        fname = f"{frame_number:05d}_{object_id}.png"
+        cv2.imwrite(os.path.join(self.TEXT_PROMPT_DIR, fname), mask_bool.astype(np.uint8) * 255)
+        prompts = [p for p in self.load_text_prompts()
+                   if not (p["frame"] == frame_number and p["obj"] == object_id)]
+        prompts.append({"frame": frame_number, "obj": object_id, "x": anchor[0], "y": anchor[1],
+                        "file": fname, "label": label})
+        self._save_text_prompts(prompts)
+        self._apply_mask(frame_number, object_id, mask_bool)
+
+    def apply_text_prompts(self, points_list):
+        """기준점 하나만 남아 있는 (프레임, 오브젝트)에는 SAM 3.1 마스크를 다시 넣는다.
+        사용자가 그 프레임에 점을 더 찍었으면 점 기준으로 두고, 기준점이 지워졌으면 기록도 지운다."""
+        prompts = self.load_text_prompts()
+        if not prompts:
+            return
+        keep = []
+        for pr in prompts:
+            pts = [p for p in points_list if p['frame'] == pr["frame"] and p['object_id'] == pr["obj"]]
+            has_anchor = any(p['positive'] and int(round(p['x'])) == pr["x"] and int(round(p['y'])) == pr["y"]
+                             for p in pts)
+            if not has_anchor:
+                continue  # 사용자가 지운 대상 → 기록 삭제
+            keep.append(pr)
+            if len(pts) != 1:
+                continue  # 사용자가 같은 프레임에 점을 더 찍음 → 점 기준
+            path = os.path.join(self.TEXT_PROMPT_DIR, pr["file"])
+            m = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if m is None:
+                continue
+            try:
+                self._apply_mask(pr["frame"], pr["obj"], m > 127)
+            except Exception as e:
+                print(f"글자로 찾은 대상(오브젝트 {pr['obj']})을 다시 넣지 못했습니다: {e}")
+        if len(keep) != len(prompts):
+            self._save_text_prompts(keep)
 
 
     def _propagate(self, parent_window, start_frame_idx, max_frame_num_to_track, reverse=False,
