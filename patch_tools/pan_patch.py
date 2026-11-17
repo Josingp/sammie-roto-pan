@@ -117,6 +117,15 @@ def main():
     new_lock_md5 = md5(old_lock) if os.path.exists(old_lock) else None
     if old_lock_md5 != new_lock_md5:
         print("\n[패키지] 필요한 패키지가 바뀌어서 다시 맞춥니다 (인터넷 필요)...")
+        # install.bat / run_sammie.bat과 같은 파이썬·캐시 위치를 써야 기존 설치를 그대로 쓴다
+        if os.path.isdir(os.path.join(app, ".uv", "python")):
+            os.environ["UV_PYTHON_INSTALL_DIR"] = os.path.join(app, ".uv", "python")
+            os.environ["UV_CACHE_DIR"] = os.path.join(app, ".uv", "uv_cache")
+        else:  # exFAT 등 링크를 못 쓰는 드라이브에 설치한 경우 (install.bat과 같은 규칙)
+            la = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Sammie-Roto-2")
+            os.environ["UV_PYTHON_INSTALL_DIR"] = os.path.join(la, "uv-python")
+            os.environ["UV_CACHE_DIR"] = os.path.join(la, "uv-cache")
+            os.environ["UV_LINK_MODE"] = "copy"
         try:
             import manage
             backend = manage.get_installed_backend() or manage.detect_backend()
